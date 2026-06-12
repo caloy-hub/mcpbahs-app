@@ -21,25 +21,46 @@ import { supabase } from "./supabaseClient";
 
 // ─── THEME ────────────────────────────────────────────────
 const T = {
-  bg:"#0a1f0a", bgCard:"#132613", bgPanel:"#1a3a1a",
-  green1:"#1b5e20", green2:"#2e7d32", green3:"#388e3c",
-  green4:"#43a047", greenLight:"#a5d6a7",
-  yellow:"#f9c900", yellowDark:"#f57f17",
-  blue:"#003082", red:"#ce1126",
-  white:"#f1f8e9", gray:"#78909c", border:"#2e7d3260",
-  text:"#e8f5e9", textMuted:"#81c784",
+ // ── Backgrounds ──────────────────────────────────────────
+  bg:         "#f0f7ee",   // soft white-green — like morning mist on a farm
+  bgCard:     "#ffffff",   // clean white cards
+  bgPanel:    "#e8f5e2",   // light sage green — input fields
+
+  // ── Greens ───────────────────────────────────────────────
+  green1:     "#1b4d1f",   // deep forest green — header background
+  green2:     "#2d6a30",   // rich garden green — borders and accents
+  green3:     "#3a8c3f",   // fresh leaf green — buttons
+  green4:     "#4caf50",   // bright grass green — success states
+  greenLight: "#81c784",   // light meadow green — muted text on dark
+
+  // ── Yellows ──────────────────────────────────────────────
+  yellow:     "#f5c800",   // harvest gold — school name, highlights
+  yellowDark: "#e6a800",   // deep golden wheat — hover states
+
+  // ── Supporting ───────────────────────────────────────────
+  blue:       "#003082",   // DepEd official blue
+  red:        "#c62828",   // delete/error red
+
+  // ── Text ─────────────────────────────────────────────────
+  white:      "#ffffff",   // pure white text on dark backgrounds
+  gray:       "#6a7c6a",   // muted sage gray
+  border:     "#b8dab840", // soft green border
+
+  // ── Main text colors ─────────────────────────────────────
+  text:       "#1b3a1e",   // dark forest — main text on light bg
+  textMuted:  "#4a7a4e",   // medium green — secondary text
 };
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif;}
-  body{background:${T.bg};color:${T.text};}
+  body{background:#f0f7ee;color:#1b3a1e;}
   ::-webkit-scrollbar{width:4px;}
-  ::-webkit-scrollbar-thumb{background:${T.green3};border-radius:4px;}
+  ::-webkit-scrollbar-thumb{background:#3a8c3f;border-radius:4px;}
   input,select,textarea{
-    background:${T.bgPanel};color:${T.text};border:1px solid ${T.border};
+    background:#e8f5e2;color:#1b3a1e;border:1px solid #b8dab8;
     border-radius:8px;padding:10px 14px;width:100%;outline:none;font-size:14px;
   }
-  input:focus,select:focus,textarea:focus{border-color:${T.green4};}
+  input:focus,select:focus,textarea:focus{border-color:#4caf50;box-shadow:0 0 0 2px #4caf5020;}
   button{cursor:pointer;border:none;border-radius:8px;font-weight:600;transition:all .2s;}
   @keyframes spin{to{transform:rotate(360deg)}}
 `;
