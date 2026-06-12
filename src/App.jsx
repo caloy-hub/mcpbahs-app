@@ -1,37 +1,52 @@
 // ============================================================
-//  App.jsx — COMPLETE FINAL VERSION
+//  App.jsx — FINAL COMPLETE VERSION v4
 //  Maria Cristina P. Belcar Agricultural High School
 //  School ID: 304342 | S.Y. 2026–2027
 //  Dept. of Education · Region XI · Division of Davao City
-//  Theme: Agricultural greens + DepEd colors + harvest gold
+//
+//  Features:
+//  ✅ AGRIANS branding on login screen
+//  ✅ LRN login for students
+//  ✅ Student list grouped by Grade → Section → Gender
+//  ✅ Sections management with Adviser assignment
+//  ✅ Curriculum Head role (add students to their grade)
+//  ✅ Adviser role (My Class + Attendance encoding)
+//  ✅ School Calendar (admin encodes school days per month)
+//  ✅ Monthly attendance by adviser
+//  ✅ Term attendance summary in student dashboard
+//  ✅ Agricultural + DepEd theme
+//  ✅ All Edge Functions (create/delete/reset)
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
+import agriansLogo from "./agrians-logo.png";
 
-// ─── THEME ────────────────────────────────────────────────
+// ─── TERM CALENDAR ───────────────────────────────────────
+const TERM_MONTHS = [
+  { month:6,  year:2026, term:1, label:"June 2026" },
+  { month:7,  year:2026, term:1, label:"July 2026" },
+  { month:8,  year:2026, term:1, label:"August 2026" },
+  { month:9,  year:2026, term:1, label:"Sept 1–15, 2026" },
+  { month:9,  year:2026, term:2, label:"Sept 16–30, 2026" },
+  { month:10, year:2026, term:2, label:"October 2026" },
+  { month:11, year:2026, term:2, label:"November 2026" },
+  { month:12, year:2026, term:2, label:"December 2026" },
+  { month:1,  year:2027, term:3, label:"January 2027" },
+  { month:2,  year:2027, term:3, label:"February 2027" },
+  { month:3,  year:2027, term:3, label:"March 2027" },
+  { month:4,  year:2027, term:3, label:"April 2027" },
+];
+
+// ─── THEME ───────────────────────────────────────────────
 const T = {
-  // Backgrounds
-  bg:         "#f0f7ee",
-  bgCard:     "#ffffff",
-  bgPanel:    "#e8f5e2",
-  // Greens
-  green1:     "#1b4d1f",
-  green2:     "#2d6a30",
-  green3:     "#3a8c3f",
-  green4:     "#4caf50",
-  greenLight: "#81c784",
-  // DepEd + Harvest
-  yellow:     "#f5c800",
-  yellowDark: "#e6a800",
-  blue:       "#003082",
-  red:        "#c62828",
-  // Text
-  white:      "#ffffff",
-  gray:       "#6a7c6a",
-  border:     "#b8dab840",
-  text:       "#1b3a1e",
-  textMuted:  "#4a7a4e",
+  bg:"#f0f7ee", bgCard:"#ffffff", bgPanel:"#e8f5e2",
+  green1:"#1b4d1f", green2:"#2d6a30", green3:"#3a8c3f",
+  green4:"#4caf50", greenLight:"#81c784",
+  yellow:"#f5c800", yellowDark:"#e6a800",
+  blue:"#003082", red:"#c62828",
+  white:"#ffffff", gray:"#6a7c6a",
+  border:"#b8dab840", text:"#1b3a1e", textMuted:"#4a7a4e",
 };
 
 const css = `
@@ -48,125 +63,85 @@ const css = `
   @keyframes spin{to{transform:rotate(360deg)}}
 `;
 
-// ─── HELPERS ──────────────────────────────────────────────
+// ─── HELPERS ─────────────────────────────────────────────
 const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
 const remark = g => {
   if (!g) return { r:"N/A", c:T.gray };
-  if (g >= 90) return { r:"Outstanding", c:"#2e7d32" };
-  if (g >= 85) return { r:"Very Satisfactory", c:"#388e3c" };
-  if (g >= 80) return { r:"Satisfactory", c:"#e6a800" };
-  if (g >= 75) return { r:"Fairly Satisfactory", c:"#ff9800" };
+  if (g>=90) return { r:"Outstanding", c:"#2e7d32" };
+  if (g>=85) return { r:"Very Satisfactory", c:"#388e3c" };
+  if (g>=80) return { r:"Satisfactory", c:"#e6a800" };
+  if (g>=75) return { r:"Fairly Satisfactory", c:"#ff9800" };
   return { r:"Did Not Meet Expectations", c:T.red };
 };
+const attendColor = pct => pct>=90?"#2e7d32":pct>=75?T.yellow:T.red;
 
-// ─── EDGE FUNCTION CALLER ────────────────────────────────
-const edgeCall = async (fnName, body) => {
+// ─── EDGE CALL ───────────────────────────────────────────
+const edgeCall = async (fn, body) => {
   const { data:{ session } } = await supabase.auth.getSession();
   const res = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`,
-    {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json",
-        "Authorization":`Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify(body),
-    }
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`,
+    { method:"POST",
+      headers:{"Content-Type":"application/json",
+        "Authorization":`Bearer ${session.access_token}`},
+      body:JSON.stringify(body) }
   );
   return res.json();
 };
 
 // ─── UI PRIMITIVES ───────────────────────────────────────
 const Card = ({ children, style={} }) => (
-  <div style={{
-    background:T.bgCard, borderRadius:12, padding:16,
-    border:`1px solid #c8e6c9`, boxShadow:"0 2px 8px #00000010",
-    ...style
-  }}>{children}</div>
+  <div style={{background:T.bgCard,borderRadius:12,padding:16,
+    border:"1px solid #c8e6c9",boxShadow:"0 2px 8px #00000010",...style}}>
+    {children}
+  </div>
 );
-
 const Btn = ({ children, onClick, color=T.green3, style={}, disabled=false }) => (
   <button onClick={onClick} disabled={disabled} style={{
     background:disabled?"#ccc":color,
     color:color===T.yellow?"#1b3a1e":T.white,
-    padding:"10px 16px", fontSize:13,
+    padding:"10px 16px",fontSize:13,
     boxShadow:disabled?"none":"0 2px 6px #00000020",
-    ...style, opacity:disabled?.6:1
-  }}>{children}</button>
+    ...style,opacity:disabled?.6:1}}>{children}</button>
 );
-
 const Badge = ({ text, color }) => (
-  <span style={{
-    background:color+"22", color, border:`1px solid ${color}55`,
-    borderRadius:20, padding:"2px 10px", fontSize:11, fontWeight:700
-  }}>{text}</span>
+  <span style={{background:color+"22",color,border:`1px solid ${color}55`,
+    borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{text}</span>
 );
-
-const Toast = ({ msg }) => msg ? (
-  <div style={{
-    position:"fixed", top:16, left:"50%", transform:"translateX(-50%)",
-    background:msg.startsWith("✅")?T.green2
-      :msg.startsWith("🗑️")?"#5d4037"
-      :msg.startsWith("⏳")?T.blue:"#b71c1c",
-    color:"#fff", padding:"10px 20px", borderRadius:20,
-    fontSize:13, fontWeight:700, zIndex:999,
-    boxShadow:"0 4px 20px #0008", whiteSpace:"nowrap"
-  }}>{msg}</div>
-) : null;
-
+const Toast = ({ msg }) => msg?(
+  <div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",
+    background:msg.startsWith("✅")?T.green2:msg.startsWith("🗑️")?"#5d4037":
+    msg.startsWith("⏳")?T.blue:"#b71c1c",
+    color:"#fff",padding:"10px 20px",borderRadius:20,fontSize:13,fontWeight:700,
+    zIndex:999,boxShadow:"0 4px 20px #0008",whiteSpace:"nowrap"}}>{msg}</div>
+):null;
 const Spinner = () => (
-  <div style={{
-    display:"flex", alignItems:"center", justifyContent:"center",
-    height:"100vh", background:T.bg, flexDirection:"column", gap:16
-  }}>
-    <div style={{
-      width:48, height:48,
-      border:`4px solid #c8e6c9`,
-      borderTop:`4px solid ${T.green3}`,
-      borderRadius:"50%", animation:"spin 1s linear infinite"
-    }}/>
-    <div style={{color:T.textMuted, fontSize:14, fontWeight:600}}>Loading...</div>
+  <div style={{display:"flex",alignItems:"center",justifyContent:"center",
+    height:"100vh",background:T.bg,flexDirection:"column",gap:16}}>
+    <div style={{width:48,height:48,border:"4px solid #c8e6c9",
+      borderTop:`4px solid ${T.green3}`,borderRadius:"50%",
+      animation:"spin 1s linear infinite"}}/>
+    <div style={{color:T.textMuted,fontSize:14,fontWeight:600}}>Loading...</div>
   </div>
 );
 
 // ─── SCHOOL HEADER ───────────────────────────────────────
 const SchoolHeader = ({ small=false }) => (
-  <div style={{
-    padding: small?"10px 12px":"20px 16px",
-    background:`linear-gradient(160deg,#0d2e10 0%,#1b4d1f 30%,#2d6a30 65%,#3a6b20 100%)`,
-    borderBottom:`4px solid ${T.yellow}`,
-    boxShadow:"0 4px 12px #0005",
-    position:"relative", overflow:"hidden",
-  }}>
-    {/* Dot pattern overlay */}
-    <div style={{
-      position:"absolute", inset:0, opacity:0.04,
-      backgroundImage:`radial-gradient(circle,#ffffff 1px,transparent 1px)`,
-      backgroundSize:"20px 20px", pointerEvents:"none",
-    }}/>
-    {/* DepEd tricolor top stripe */}
-    <div style={{
-      position:"absolute", top:0, left:0, right:0, height:4,
-      background:"linear-gradient(90deg,#003082 33%,#ce1126 33%,#ce1126 66%,#f5c800 66%)",
-    }}/>
-    <div style={{
-      display:"flex", alignItems:"center",
-      justifyContent:"center", gap:12,
-      position:"relative", zIndex:1,
-      marginTop: small?2:6,
-    }}>
-      {/* Agricultural SVG Logo */}
-      <div style={{
-        width:small?44:64, height:small?44:64,
-        borderRadius:"50%",
-        border:`3px solid ${T.yellow}`,
-        boxShadow:"0 2px 12px #0006",
-        flexShrink:0, overflow:"hidden",
-        background:"linear-gradient(160deg,#1b4d1f,#2d6a30)",
-        display:"flex", alignItems:"center", justifyContent:"center",
-      }}>
+  <div style={{padding:small?"10px 12px":"20px 16px",
+    background:"linear-gradient(160deg,#0d2e10 0%,#1b4d1f 30%,#2d6a30 65%,#3a6b20 100%)",
+    borderBottom:`4px solid ${T.yellow}`,boxShadow:"0 4px 12px #0005",
+    position:"relative",overflow:"hidden"}}>
+    <div style={{position:"absolute",inset:0,opacity:0.04,
+      backgroundImage:"radial-gradient(circle,#ffffff 1px,transparent 1px)",
+      backgroundSize:"20px 20px",pointerEvents:"none"}}/>
+    <div style={{position:"absolute",top:0,left:0,right:0,height:4,
+      background:"linear-gradient(90deg,#003082 33%,#ce1126 33%,#ce1126 66%,#f5c800 66%)"}}/>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",
+      gap:12,position:"relative",zIndex:1,marginTop:small?2:6}}>
+      <div style={{width:small?44:64,height:small?44:64,borderRadius:"50%",
+        border:`3px solid ${T.yellow}`,boxShadow:"0 2px 12px #0006",flexShrink:0,
+        overflow:"hidden",background:"linear-gradient(160deg,#1b4d1f,#2d6a30)",
+        display:"flex",alignItems:"center",justifyContent:"center"}}>
         <svg width={small?36:52} height={small?36:52} viewBox="0 0 100 100">
-          {/* Sun */}
           <circle cx="50" cy="26" r="13" fill="#f5c800"/>
           <line x1="50" y1="7"  x2="50" y2="2"  stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
           <line x1="50" y1="45" x2="50" y2="50" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
@@ -176,30 +151,25 @@ const SchoolHeader = ({ small=false }) => (
           <line x1="63" y1="13" x2="67" y2="9"  stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
           <line x1="37" y1="39" x2="33" y2="43" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
           <line x1="63" y1="39" x2="67" y2="43" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          {/* Rice stalk left */}
           <line x1="25" y1="95" x2="25" y2="55" stroke="#81c784" strokeWidth="2.5" strokeLinecap="round"/>
           <ellipse cx="25" cy="55" rx="5" ry="8" fill="#4caf50" transform="rotate(-15 25 55)"/>
           <ellipse cx="21" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(-25 21 63)"/>
           <ellipse cx="29" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(15 29 63)"/>
           <ellipse cx="23" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(-20 23 72)"/>
           <ellipse cx="27" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(10 27 72)"/>
-          {/* Rice stalk right */}
           <line x1="75" y1="95" x2="75" y2="55" stroke="#81c784" strokeWidth="2.5" strokeLinecap="round"/>
           <ellipse cx="75" cy="55" rx="5" ry="8" fill="#4caf50" transform="rotate(15 75 55)"/>
           <ellipse cx="71" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(-15 71 63)"/>
           <ellipse cx="79" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(25 79 63)"/>
           <ellipse cx="73" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(-10 73 72)"/>
           <ellipse cx="77" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(20 77 72)"/>
-          {/* Center tree */}
           <line x1="50" y1="95" x2="50" y2="58" stroke="#2d6a30" strokeWidth="3" strokeLinecap="round"/>
           <ellipse cx="50" cy="54" rx="10" ry="12" fill="#3a8c3f"/>
           <ellipse cx="50" cy="48" rx="7"  ry="9"  fill="#4caf50"/>
-          {/* Base banner */}
           <rect x="18" y="88" width="64" height="8" rx="4" fill="#f5c800"/>
           <rect x="24" y="84" width="52" height="6" rx="3" fill="#e6a800"/>
         </svg>
       </div>
-      {/* Text */}
       <div style={{textAlign:"left"}}>
         <div style={{fontSize:small?9:11,color:"#a5d6a7",fontWeight:600,letterSpacing:.5,lineHeight:1.5}}>
           Department of Education · Region XI · Division of Davao City
@@ -217,47 +187,85 @@ const SchoolHeader = ({ small=false }) => (
         </div>
       </div>
     </div>
-    {/* Bottom grass strip */}
+    <div style={{position:"absolute",bottom:0,left:0,right:0,height:small?3:5,
+      background:"linear-gradient(90deg,#2d6a30,#4caf50,#f5c800,#4caf50,#2d6a30)",opacity:0.7}}/>
+  </div>
+);
+
+// ─── AGRIANS BRANDING ────────────────────────────────────
+const AgriansBranding = () => (
+  <div style={{
+    display:"flex",flexDirection:"column",alignItems:"center",
+    justifyContent:"center",textAlign:"center",
+    padding:"20px 20px 0px 20px",width:"100%",maxWidth:400,
+  }}>
+    {/* Logo */}
     <div style={{
-      position:"absolute", bottom:0, left:0, right:0, height:small?3:5,
-      background:"linear-gradient(90deg,#2d6a30,#4caf50,#f5c800,#4caf50,#2d6a30)",
-      opacity:0.7,
-    }}/>
-  </div>
-);
-
-// ─── TOPBAR ──────────────────────────────────────────────
-const TopBar = ({ name, sub, onLogout }) => (
-  <div style={{
-    background:T.bgCard, padding:"10px 16px",
-    display:"flex", justifyContent:"space-between", alignItems:"center",
-    borderBottom:`2px solid #c8e6c9`, boxShadow:"0 2px 6px #00000010"
-  }}>
-    <div>
-      <div style={{fontWeight:700, fontSize:14, color:T.green1}}>{name}</div>
-      <div style={{fontSize:11, color:T.textMuted}}>{sub}</div>
+      width:110,height:110,borderRadius:"50%",
+      overflow:"hidden",marginBottom:12,
+      boxShadow:"0 4px 20px #00000025",
+      border:`3px solid ${T.yellow}`,
+      background:"transparent",
+      display:"flex",alignItems:"center",justifyContent:"center",
+    }}>
+      <img
+        src={agriansLogo}
+        alt="AGRIANS Logo"
+        style={{
+          width:"100%",height:"100%",objectFit:"cover",
+          mixBlendMode:"multiply",
+          filter:"contrast(1.1) saturate(1.2)",
+        }}
+      />
     </div>
-    <Btn onClick={onLogout} color={T.red} style={{padding:"6px 12px", fontSize:12}}>Logout</Btn>
+    {/* Project Name */}
+    <div style={{fontSize:22,fontWeight:900,color:T.green1,letterSpacing:1,marginBottom:2}}>
+      Project <span style={{color:T.green3}}>AGRIANS</span>
+    </div>
+    {/* Tagline */}
+    <div style={{fontSize:13,fontWeight:600,color:T.textMuted,marginBottom:8,fontStyle:"italic"}}>
+      No paper. No waiting. Just progress.
+    </div>
+    {/* DepEd tricolor divider */}
+    <div style={{display:"flex",height:3,borderRadius:4,overflow:"hidden",width:180,marginBottom:8}}>
+      <div style={{flex:1,background:T.blue}}/>
+      <div style={{flex:1,background:T.red}}/>
+      <div style={{flex:1,background:T.yellow}}/>
+    </div>
+    {/* Acronym expansion */}
+    <div style={{fontSize:10,color:T.gray,lineHeight:1.9,letterSpacing:.5,marginBottom:4}}>
+      <span style={{fontWeight:700,color:T.green3}}>A</span>cademic{" "}
+      <span style={{fontWeight:700,color:T.green3}}>G</span>rade{" "}
+      <span style={{fontWeight:700,color:T.green3}}>R</span>elease {"&"}{" "}
+      <span style={{fontWeight:700,color:T.green3}}>I</span>nteractive{" "}
+      <span style={{fontWeight:700,color:T.green3}}>A</span>ppointment{" "}
+      <span style={{fontWeight:700,color:T.green3}}>N</span>etwork{" "}
+      <span style={{fontWeight:700,color:T.green3}}>S</span>ystem
+    </div>
   </div>
 );
 
-// ─── BOTTOM NAV ──────────────────────────────────────────
+const TopBar = ({ name, sub, onLogout }) => (
+  <div style={{background:T.bgCard,padding:"10px 16px",display:"flex",
+    justifyContent:"space-between",alignItems:"center",
+    borderBottom:"2px solid #c8e6c9",boxShadow:"0 2px 6px #00000010"}}>
+    <div>
+      <div style={{fontWeight:700,fontSize:14,color:T.green1}}>{name}</div>
+      <div style={{fontSize:11,color:T.textMuted}}>{sub}</div>
+    </div>
+    <Btn onClick={onLogout} color={T.red} style={{padding:"6px 12px",fontSize:12}}>Logout</Btn>
+  </div>
+);
+
 const BottomNav = ({ tabs, active, setActive }) => (
-  <div style={{
-    position:"fixed", bottom:0, left:0, right:0,
-    background:T.bgCard, borderTop:`2px solid #c8e6c9`,
-    display:"flex", zIndex:100, boxShadow:"0 -2px 8px #00000015"
-  }}>
-    {tabs.map(([ic,lb,tb]) => (
+  <div style={{position:"fixed",bottom:0,left:0,right:0,background:T.bgCard,
+    borderTop:"2px solid #c8e6c9",display:"flex",zIndex:100,boxShadow:"0 -2px 8px #00000015"}}>
+    {tabs.map(([ic,lb,tb])=>(
       <button key={tb} onClick={()=>setActive(tb)} style={{
-        flex:1, padding:"10px 2px", background:"transparent",
-        border:"none", cursor:"pointer",
-        color:active===tb?T.green2:T.gray,
-        display:"flex", flexDirection:"column",
-        alignItems:"center", fontSize:9,
-        fontWeight:active===tb?700:400, gap:2,
-        borderTop:active===tb?`2px solid ${T.green3}`:"2px solid transparent",
-      }}>
+        flex:1,padding:"10px 2px",background:"transparent",border:"none",cursor:"pointer",
+        color:active===tb?T.green2:T.gray,display:"flex",flexDirection:"column",
+        alignItems:"center",fontSize:9,fontWeight:active===tb?700:400,gap:2,
+        borderTop:active===tb?`2px solid ${T.green3}`:"2px solid transparent"}}>
         <span style={{fontSize:18}}>{ic}</span>{lb}
       </button>
     ))}
@@ -266,40 +274,36 @@ const BottomNav = ({ tabs, active, setActive }) => (
 
 // ─── RESET PASSWORD MODAL ────────────────────────────────
 const ResetPasswordModal = ({ user, onConfirm, onClose }) => {
-  const [newPass, setNewPass] = useState("");
-  const [showPass, setShowPass] = useState(false);
-  const strength = newPass.length===0?0:newPass.length<6?1:newPass.length<9?2:newPass.length<12?3:4;
-  const strengthLabel = ["","Too short","Weak","Good","Strong"][strength];
-  const strengthColor = [T.gray,T.red,"#ff9800",T.yellow,T.green4][strength];
+  const [newPass,setNewPass]=useState("");
+  const [showPass,setShowPass]=useState(false);
+  const strength=newPass.length===0?0:newPass.length<6?1:newPass.length<9?2:newPass.length<12?3:4;
+  const sLabel=["","Too short","Weak","Good","Strong"][strength];
+  const sColor=[T.gray,T.red,"#ff9800",T.yellow,T.green4][strength];
   return (
     <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:300,
       display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <Card style={{width:"100%",maxWidth:360}}>
         <div style={{fontSize:16,fontWeight:800,color:T.green1,marginBottom:4}}>🔑 Reset Password</div>
         <div style={{fontSize:12,color:T.textMuted,marginBottom:16}}>
-          Resetting password for: <strong style={{color:T.green1}}>{user.name}</strong><br/>
+          For: <strong style={{color:T.green1}}>{user.name}</strong>&nbsp;
           <span style={{background:T.green4+"22",color:T.green2,borderRadius:20,
-            padding:"1px 8px",fontSize:11,fontWeight:700,textTransform:"capitalize"}}>{user.role}</span>
+            padding:"1px 8px",fontSize:11,fontWeight:700}}>{user.role}</span>
         </div>
-        <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
-          New Password <span style={{color:T.red}}>*</span>
-        </label>
         <div style={{position:"relative",marginBottom:8}}>
           <input type={showPass?"text":"password"} value={newPass}
             onChange={e=>setNewPass(e.target.value)} placeholder="Minimum 6 characters"
             onKeyDown={e=>e.key==="Enter"&&onConfirm(newPass)} style={{paddingRight:44}}/>
-          <button onClick={()=>setShowPass(p=>!p)} style={{
-            position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
-            background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.textMuted,padding:4
-          }}>{showPass?"🙈":"👁️"}</button>
+          <button onClick={()=>setShowPass(p=>!p)} style={{position:"absolute",right:10,
+            top:"50%",transform:"translateY(-50%)",background:"none",border:"none",
+            cursor:"pointer",fontSize:16,color:T.textMuted}}>{showPass?"🙈":"👁️"}</button>
         </div>
         {newPass.length>0&&(
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:14}}>
             {[1,2,3,4].map(i=>(
               <div key={i} style={{flex:1,height:4,borderRadius:2,
-                background:strength>=i?strengthColor:"#e0e0e0",transition:"background .2s"}}/>
+                background:strength>=i?sColor:"#e0e0e0",transition:"background .2s"}}/>
             ))}
-            <span style={{fontSize:11,color:strengthColor,flexShrink:0}}>{strengthLabel}</span>
+            <span style={{fontSize:11,color:sColor,flexShrink:0}}>{sLabel}</span>
           </div>
         )}
         {newPass.length===0&&<div style={{marginBottom:14}}/>}
@@ -312,42 +316,244 @@ const ResetPasswordModal = ({ user, onConfirm, onClose }) => {
   );
 };
 
+// ─── ADD STUDENT FORM ────────────────────────────────────
+const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
+  const [form,setForm]=useState({
+    name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
+    gender:"Male",birthday:"",address:"",email:"",password:""
+  });
+  const availSections=gradeFilter
+    ?sections.filter(s=>s.grade_level===parseInt(gradeFilter))
+    :sections.filter(s=>s.grade_level===parseInt(form.grade_level));
+
+  const submit=()=>{
+    onAdd(form);
+    setForm({name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
+      gender:"Male",birthday:"",address:"",email:"",password:""});
+  };
+
+  return (
+    <Card style={{marginBottom:12}}>
+      <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Student</div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+        <input placeholder="Full Name *" value={form.name}
+          onChange={e=>setForm(p=>({...p,name:e.target.value}))}/>
+        <input placeholder="LRN (12 digits) *" value={form.lrn} maxLength={12}
+          onChange={e=>setForm(p=>({...p,lrn:e.target.value}))}/>
+        {!gradeFilter&&(
+          <select value={form.grade_level}
+            onChange={e=>setForm(p=>({...p,grade_level:e.target.value,section_id:""}))}>
+            {[7,8,9,10].map(g=><option key={g} value={g}>Grade {g}</option>)}
+          </select>
+        )}
+        <select value={form.section_id}
+          onChange={e=>setForm(p=>({...p,section_id:e.target.value}))}>
+          <option value="">-- Section --</option>
+          {availSections.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select value={form.gender} onChange={e=>setForm(p=>({...p,gender:e.target.value}))}>
+          <option>Male</option><option>Female</option>
+        </select>
+        <input type="date" value={form.birthday}
+          onChange={e=>setForm(p=>({...p,birthday:e.target.value}))}/>
+        <input placeholder="Email *" value={form.email}
+          onChange={e=>setForm(p=>({...p,email:e.target.value}))}/>
+        <input type="password" placeholder="Password *" value={form.password}
+          onChange={e=>setForm(p=>({...p,password:e.target.value}))}/>
+      </div>
+      <input placeholder="Address" value={form.address}
+        onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={{marginBottom:10}}/>
+      <Btn onClick={submit} disabled={loading} style={{width:"100%"}}>
+        {loading?"⏳ Adding...":"➕ Add Student"}
+      </Btn>
+    </Card>
+  );
+};
+
+// ─── STUDENT LIST GROUPED ────────────────────────────────
+const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign }) => {
+  const grades=[7,8,9,10];
+  return (
+    <div>
+      {grades.map(gl=>{
+        const gradeSections=sections.filter(s=>s.grade_level===gl);
+        const gradeStudents=students.filter(s=>s.grade_level===gl);
+        if (!gradeStudents.length) return null;
+        return (
+          <div key={gl} style={{marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:800,color:T.white,
+              background:T.green1,padding:"6px 12px",borderRadius:8,marginBottom:8}}>
+              Grade {gl}
+            </div>
+            {gradeSections.map(sec=>{
+              const secStudents=gradeStudents.filter(s=>s.section_id===sec.id);
+              if (!secStudents.length) return null;
+              const males=secStudents.filter(s=>s.gender==="Male");
+              const females=secStudents.filter(s=>s.gender==="Female");
+              const adviser=teachers.find(t=>t.id===sec.adviser_id);
+              return (
+                <div key={sec.id} style={{marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:T.green2,
+                    background:"#e8f5e9",padding:"4px 10px",borderRadius:6,
+                    borderLeft:`3px solid ${T.green3}`,marginBottom:6,
+                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span>Section: {sec.name}</span>
+                    {adviser&&<span style={{fontSize:10,color:T.textMuted}}>
+                      Adviser: {adviser.name}
+                    </span>}
+                  </div>
+                  {males.length>0&&(
+                    <div>
+                      <div style={{fontSize:11,color:T.blue,fontWeight:700,
+                        padding:"2px 8px",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                        <span>♂</span><span>Male ({males.length})</span>
+                      </div>
+                      {males.map(s=>
+                        <StudentCard key={s.id} student={s} sections={sections}
+                          showActions={showActions} onDelete={onDelete}
+                          onReset={onReset} onReassign={onReassign}/>
+                      )}
+                    </div>
+                  )}
+                  {females.length>0&&(
+                    <div style={{marginTop:4}}>
+                      <div style={{fontSize:11,color:"#c2185b",fontWeight:700,
+                        padding:"2px 8px",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                        <span>♀</span><span>Female ({females.length})</span>
+                      </div>
+                      {females.map(s=>
+                        <StudentCard key={s.id} student={s} sections={sections}
+                          showActions={showActions} onDelete={onDelete}
+                          onReset={onReset} onReassign={onReassign}/>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {gradeStudents.filter(s=>!s.section_id).length>0&&(
+              <div style={{marginBottom:8}}>
+                <div style={{fontSize:12,color:T.gray,padding:"2px 8px",marginBottom:4}}>
+                  No Section Assigned
+                </div>
+                {gradeStudents.filter(s=>!s.section_id).map(s=>
+                  <StudentCard key={s.id} student={s} sections={sections}
+                    showActions={showActions} onDelete={onDelete}
+                    onReset={onReset} onReassign={onReassign}/>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onReassign }) => {
+  const [expand,setExpand]=useState(false);
+  const sec=sections.find(x=>x.id===s.section_id);
+  return (
+    <Card style={{marginBottom:6,padding:"8px 12px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{flex:1}} onClick={()=>setExpand(p=>!p)}>
+          <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+          <div style={{fontSize:11,color:T.textMuted,display:"flex",gap:8,flexWrap:"wrap"}}>
+            <span>LRN: {s.lrn}</span>
+            <span>Gr.{s.grade_level}</span>
+            {sec&&<span>{sec.name}</span>}
+            <Badge text={s.gender} color={s.gender==="Male"?T.blue:"#c2185b"}/>
+          </div>
+        </div>
+        {showActions&&(
+          <div style={{display:"flex",gap:4,flexShrink:0}}>
+            <Btn color={T.blue} style={{padding:"5px 8px",fontSize:11}}
+              onClick={()=>onReset({userId:s.id,name:s.name,role:"student"})}>🔑</Btn>
+            <Btn color={T.red} style={{padding:"5px 8px",fontSize:11}}
+              onClick={()=>onDelete(s.id)}>🗑️</Btn>
+          </div>
+        )}
+      </div>
+      {expand&&(
+        <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #e0f0e0"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:11}}>
+            {[["Birthday",s.birthday||"—"],["Address",s.address||"—"],
+              ["Email",s.email||"—"]].map(([k,v])=>(
+              <div key={k}><span style={{color:T.textMuted}}>{k}: </span>
+                <span style={{color:T.text}}>{v}</span></div>
+            ))}
+          </div>
+          {onReassign&&(
+            <div style={{marginTop:8}}>
+              <label style={{fontSize:11,color:T.textMuted,display:"block",marginBottom:4}}>
+                Reassign Section:
+              </label>
+              <select value={s.section_id||""} style={{fontSize:12,padding:"5px 8px"}}
+                onChange={e=>onReassign(s.id,e.target.value)}>
+                <option value="">-- No Section --</option>
+                {sections.filter(x=>x.grade_level===s.grade_level).map(x=>(
+                  <option key={x.id} value={x.id}>{x.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+};
+
 // ─── LOGIN ───────────────────────────────────────────────
 const Login = () => {
-  const [role, setRole] = useState("student");
-  const [id, setId] = useState("");
-  const [pass, setPass] = useState("");
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [role,setRole]=useState("student");
+  const [id,setId]=useState("");
+  const [pass,setPass]=useState("");
+  const [err,setErr]=useState("");
+  const [loading,setLoading]=useState(false);
 
-  const doLogin = async () => {
+  const doLogin=async()=>{
     setErr(""); setLoading(true);
     try {
-      let email = id;
+      let email=id;
       if (role==="student") {
-        const { data, error } = await supabase.from("profiles").select("email")
-          .eq("student_no",id).eq("role","student").single();
-        if (error||!data) { setErr("Student number not found."); setLoading(false); return; }
-        email = data.email;
+        const {data,error}=await supabase.from("profiles").select("email")
+          .eq("lrn",id).eq("role","student").single();
+        if (error||!data){setErr("LRN not found.");setLoading(false);return;}
+        email=data.email;
       }
-      const { error } = await supabase.auth.signInWithPassword({ email, password:pass });
+      const {error}=await supabase.auth.signInWithPassword({email,password:pass});
       if (error) setErr(error.message);
-    } catch { setErr("Login failed. Please try again."); }
+    } catch {setErr("Login failed. Please try again.");}
     setLoading(false);
   };
 
   return (
-    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,#e8f5e2 0%,#f0f7ee 50%,#e1f0e1 100%)`,
-      display:"flex",flexDirection:"column"}}>
+    <div style={{
+      minHeight:"100vh",
+      background:"linear-gradient(160deg,#e8f5e2 0%,#f0f7ee 50%,#e1f0e1 100%)",
+      display:"flex",flexDirection:"column",
+    }}>
+      {/* School header — unchanged */}
       <SchoolHeader/>
-      <div style={{flex:1,display:"flex",flexDirection:"column",
-        alignItems:"center",justifyContent:"center",padding:20}}>
-        <Card style={{width:"100%",maxWidth:400,boxShadow:"0 8px 32px #00000015"}}>
+
+      {/* Centered content area */}
+      <div style={{
+        flex:1,
+        display:"flex",
+        flexDirection:"column",
+        alignItems:"center",
+        justifyContent:"center",
+        padding:"20px 20px 40px 20px",
+      }}>
+        {/* AGRIANS Branding — above login card, inside centered area */}
+        <AgriansBranding/>
+
+        {/* Login Card */}
+        <Card style={{width:"100%",maxWidth:400,boxShadow:"0 8px 32px #00000015",marginTop:16}}>
           <div style={{textAlign:"center",marginBottom:20}}>
             <div style={{fontSize:22,fontWeight:800,color:T.green1}}>Welcome</div>
             <div style={{fontSize:12,color:T.textMuted}}>School Year 2026–2027</div>
           </div>
-          {/* Role tabs */}
           <div style={{display:"flex",gap:4,marginBottom:18,
             background:T.bgPanel,borderRadius:8,padding:4}}>
             {["student","teacher","admin"].map(r=>(
@@ -355,15 +561,14 @@ const Login = () => {
                 flex:1,padding:"8px 4px",borderRadius:6,fontSize:12,fontWeight:700,
                 background:role===r?T.green3:"transparent",
                 color:role===r?T.white:T.textMuted,
-                border:"none",cursor:"pointer",textTransform:"capitalize"
-              }}>{r}</button>
+                border:"none",cursor:"pointer",textTransform:"capitalize"}}>{r}</button>
             ))}
           </div>
           <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
-            {role==="student"?"Student Number":"Email Address"}
+            {role==="student"?"LRN (Learner Reference Number)":"Email Address"}
           </label>
           <input value={id} onChange={e=>setId(e.target.value)}
-            placeholder={role==="student"?"e.g. 2024-0001":"e.g. user@mcpbahs.edu.ph"}
+            placeholder={role==="student"?"Enter your 12-digit LRN":"e.g. user@mcpbahs.edu.ph"}
             onKeyDown={e=>e.key==="Enter"&&doLogin()} style={{marginBottom:12}}/>
           <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Password</label>
           <input type="password" value={pass} onChange={e=>setPass(e.target.value)}
@@ -374,7 +579,6 @@ const Login = () => {
           <Btn onClick={doLogin} disabled={loading} style={{width:"100%",padding:"12px",fontSize:15}}>
             {loading?"Logging in...":"🔐 Login"}
           </Btn>
-          {/* DepEd color bar */}
           <div style={{display:"flex",height:4,borderRadius:4,overflow:"hidden",marginTop:16}}>
             <div style={{flex:1,background:T.blue}}/>
             <div style={{flex:1,background:T.red}}/>
@@ -388,59 +592,84 @@ const Login = () => {
 
 // ─── STUDENT DASHBOARD ───────────────────────────────────
 const StudentDashboard = ({ profile, onLogout }) => {
-  const [tab, setTab] = useState("grades");
-  const [subjects, setSubjects] = useState([]);
-  const [grades, setGrades] = useState([]);
-  const [teachers, setTeachers] = useState([]);
-  const [appointments, setAppointments] = useState([]);
-  const [apptForm, setApptForm] = useState({teacherId:"",date:"",time:"",reason:""});
-  const [apptMsg, setApptMsg] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [tab,setTab]=useState("grades");
+  const [subjects,setSubjects]=useState([]);
+  const [grades,setGrades]=useState([]);
+  const [teachers,setTeachers]=useState([]);
+  const [appointments,setAppointments]=useState([]);
+  const [attendance,setAttendance]=useState([]);
+  const [calendar,setCalendar]=useState([]);
+  const [section,setSection]=useState(null);
+  const [apptForm,setApptForm]=useState({teacherId:"",date:"",time:"",reason:""});
+  const [apptMsg,setApptMsg]=useState("");
+  const [loading,setLoading]=useState(true);
 
-  const fetchData = useCallback(async () => {
+  const fetchData=useCallback(async()=>{
     setLoading(true);
-    const [sR,gR,tR,aR] = await Promise.all([
+    const [sR,gR,tR,aR,attR,calR,secR]=await Promise.all([
       supabase.from("subjects").select("*").eq("grade_level",profile.grade_level),
       supabase.from("grades").select("*").eq("student_id",profile.id),
       supabase.from("profiles").select("id,name").eq("role","teacher"),
       supabase.from("appointments").select("*").eq("student_id",profile.id),
+      supabase.from("attendance").select("*").eq("student_id",profile.id),
+      supabase.from("school_calendar").select("*").order("year").order("month"),
+      profile.section_id
+        ?supabase.from("sections").select("*").eq("id",profile.section_id).single()
+        :{data:null},
     ]);
     if (sR.data) setSubjects(sR.data);
     if (gR.data) setGrades(gR.data);
     if (tR.data) setTeachers(tR.data);
     if (aR.data) setAppointments(aR.data);
+    if (attR.data) setAttendance(attR.data);
+    if (calR.data) setCalendar(calR.data);
+    if (secR.data) setSection(secR.data);
     setLoading(false);
-  }, [profile.id, profile.grade_level]);
+  },[profile.id,profile.grade_level,profile.section_id]);
 
-  useEffect(() => {
+  useEffect(()=>{
     fetchData();
-    const ch = supabase.channel("grades-student")
+    const ch=supabase.channel("student-realtime")
       .on("postgres_changes",{event:"*",schema:"public",table:"grades",
         filter:`student_id=eq.${profile.id}`},()=>fetchData())
+      .on("postgres_changes",{event:"*",schema:"public",table:"attendance",
+        filter:`student_id=eq.${profile.id}`},()=>fetchData())
       .subscribe();
-    return () => supabase.removeChannel(ch);
-  }, [fetchData, profile.id]);
+    return ()=>supabase.removeChannel(ch);
+  },[fetchData,profile.id]);
 
-  const getG = (subId,term) => grades.find(g=>g.subject_id===subId&&g.term===term)?.grade||null;
-  const getFinal = subId => avg([1,2,3].map(t=>getG(subId,t)).filter(Boolean));
-  const overallAvg = avg(subjects.map(s=>getFinal(s.id)).filter(Boolean));
+  const getG=(subId,term)=>grades.find(g=>g.subject_id===subId&&g.term===term)?.grade||null;
+  const getFinal=subId=>avg([1,2,3].map(t=>getG(subId,t)).filter(Boolean));
+  const overallAvg=avg(subjects.map(s=>getFinal(s.id)).filter(Boolean));
 
-  const submitAppt = async () => {
-    if (!apptForm.teacherId||!apptForm.date||!apptForm.time||!apptForm.reason) {
+  const getTermAttendance=term=>{
+    const termMonths=TERM_MONTHS.filter(m=>m.term===term);
+    let totalDays=0,totalPresent=0;
+    termMonths.forEach(m=>{
+      const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===term);
+      const att=attendance.find(a=>a.month===m.month&&a.year===m.year&&a.term===term);
+      totalDays+=(cal?.school_days||0);
+      totalPresent+=(att?.days_present||0);
+    });
+    const absent=totalDays-totalPresent;
+    const pct=totalDays>0?Math.round((totalPresent/totalDays)*100):0;
+    return {totalDays,totalPresent,absent,pct};
+  };
+
+  const submitAppt=async()=>{
+    if (!apptForm.teacherId||!apptForm.date||!apptForm.time||!apptForm.reason){
       setApptMsg("❌ Please fill all fields."); return;
     }
-    const teacher = teachers.find(t=>t.id===apptForm.teacherId);
-    const { error } = await supabase.from("appointments").insert({
-      student_id:profile.id, student_name:profile.name,
-      teacher_id:apptForm.teacherId, teacher_name:teacher?.name||"",
-      date:apptForm.date, time:apptForm.time,
-      reason:apptForm.reason, status:"Pending",
+    const teacher=teachers.find(t=>t.id===apptForm.teacherId);
+    const {error}=await supabase.from("appointments").insert({
+      student_id:profile.id,student_name:profile.name,
+      teacher_id:apptForm.teacherId,teacher_name:teacher?.name||"",
+      date:apptForm.date,time:apptForm.time,reason:apptForm.reason,status:"Pending",
     });
-    if (error) { setApptMsg("❌ "+error.message); return; }
+    if (error){setApptMsg("❌ "+error.message);return;}
     setApptMsg("✅ Appointment submitted!");
     setApptForm({teacherId:"",date:"",time:"",reason:""});
-    fetchData();
-    setTimeout(()=>setApptMsg(""),3000);
+    fetchData(); setTimeout(()=>setApptMsg(""),3000);
   };
 
   if (loading) return <Spinner/>;
@@ -449,17 +678,18 @@ const StudentDashboard = ({ profile, onLogout }) => {
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
       <TopBar name={profile.name}
-        sub={`Grade ${profile.grade_level} – ${profile.section} · ${profile.student_no}`}
+        sub={`Grade ${profile.grade_level}${section?" – "+section.name:""} · LRN: ${profile.lrn}`}
         onLogout={onLogout}/>
       <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
 
-        {tab==="profile" && (
+        {tab==="profile"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>👤 Student Profile</div>
             <Card style={{marginBottom:10}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                {[["Full Name",profile.name],["Student No.",profile.student_no],
-                  ["Grade Level","Grade "+profile.grade_level],["Section",profile.section||"—"],
+                {[["Full Name",profile.name],["LRN",profile.lrn],
+                  ["Grade Level","Grade "+profile.grade_level],
+                  ["Section",section?.name||"—"],
                   ["Gender",profile.gender||"—"],["Birthday",profile.birthday||"—"],
                 ].map(([k,v])=>(
                   <div key={k}>
@@ -481,24 +711,24 @@ const StudentDashboard = ({ profile, onLogout }) => {
           </div>
         )}
 
-        {tab==="grades" && (
+        {tab==="grades"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              📊 Grades — S.Y. 2026–2027
+              📊 Grades & Attendance — S.Y. 2026–2027
             </div>
             <Card style={{textAlign:"center",marginBottom:10}}>
               <div style={{fontSize:11,color:T.textMuted}}>General Average</div>
               <div style={{fontSize:38,fontWeight:900,color:T.green2}}>{overallAvg||"—"}</div>
               {overallAvg&&<Badge text={remark(overallAvg).r} color={remark(overallAvg).c}/>}
             </Card>
-            <Card style={{padding:0,overflow:"hidden"}}>
+            <Card style={{padding:0,overflow:"hidden",marginBottom:12}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                 <thead>
                   <tr style={{background:T.green1}}>
                     <th style={{padding:"10px 8px",textAlign:"left",color:T.yellow}}>Subject</th>
-                    <th style={{padding:"10px 6px",textAlign:"center",color:T.white}}>Q1</th>
-                    <th style={{padding:"10px 6px",textAlign:"center",color:T.white}}>Q2</th>
-                    <th style={{padding:"10px 6px",textAlign:"center",color:T.white}}>Q3</th>
+                    <th style={{padding:"10px 6px",textAlign:"center",color:T.white}}>T1</th>
+                    <th style={{padding:"10px 6px",textAlign:"center",color:T.white}}>T2</th>
+                    <th style={{padding:"10px 6px",textAlign:"center",color:T.white}}>T3</th>
                     <th style={{padding:"10px 6px",textAlign:"center",color:T.yellow}}>Final</th>
                   </tr>
                 </thead>
@@ -513,10 +743,8 @@ const StudentDashboard = ({ profile, onLogout }) => {
                     const {r:rem,c}=remark(fin);
                     const teacher=teachers.find(t=>t.id===s.teacher_id);
                     return (
-                      <tr key={s.id} style={{
-                        background:i%2===0?T.bgCard:"#f1f8f1",
-                        borderBottom:`1px solid #e0f0e0`
-                      }}>
+                      <tr key={s.id} style={{background:i%2===0?T.bgCard:"#f1f8f1",
+                        borderBottom:"1px solid #e0f0e0"}}>
                         <td style={{padding:"8px"}}>
                           <div style={{fontWeight:600,color:T.text}}>{s.name}</div>
                           <div style={{fontSize:10,color:T.textMuted}}>{teacher?.name||"Unassigned"}</div>
@@ -536,10 +764,72 @@ const StudentDashboard = ({ profile, onLogout }) => {
                 </tbody>
               </table>
             </Card>
+            <div style={{fontSize:13,fontWeight:700,color:T.green1,marginBottom:8}}>
+              📅 Attendance Summary
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+              {[1,2,3].map(term=>{
+                const {totalDays,totalPresent,absent,pct}=getTermAttendance(term);
+                return (
+                  <Card key={term} style={{textAlign:"center",padding:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:T.green1,marginBottom:4}}>
+                      Term {term}
+                    </div>
+                    <div style={{fontSize:22,fontWeight:900,color:attendColor(pct)}}>{pct}%</div>
+                    <div style={{fontSize:10,color:T.textMuted}}>{totalPresent}/{totalDays} days</div>
+                    <div style={{fontSize:10,color:T.red}}>{absent} absent</div>
+                    <div style={{height:4,background:"#e0e0e0",borderRadius:2,marginTop:6}}>
+                      <div style={{height:"100%",borderRadius:2,width:`${pct}%`,
+                        background:attendColor(pct),transition:"width .3s"}}/>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+            <div style={{fontSize:13,fontWeight:700,color:T.green1,marginBottom:8}}>
+              📆 Monthly Attendance
+            </div>
+            <Card style={{padding:0,overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead>
+                  <tr style={{background:T.green2}}>
+                    <th style={{padding:"8px",textAlign:"left",color:T.white}}>Month</th>
+                    <th style={{padding:"8px",textAlign:"center",color:T.white}}>Days</th>
+                    <th style={{padding:"8px",textAlign:"center",color:T.white}}>Present</th>
+                    <th style={{padding:"8px",textAlign:"center",color:T.white}}>Absent</th>
+                    <th style={{padding:"8px",textAlign:"center",color:T.yellow}}>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {TERM_MONTHS.map((m,i)=>{
+                    const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===m.term);
+                    const att=attendance.find(a=>a.month===m.month&&a.year===m.year&&a.term===m.term);
+                    const sd=cal?.school_days||0;
+                    const dp=att?.days_present||0;
+                    const ab=sd-dp;
+                    const pct=sd>0?Math.round((dp/sd)*100):0;
+                    return (
+                      <tr key={i} style={{background:i%2===0?T.bgCard:"#f1f8f1",
+                        borderBottom:"1px solid #e0f0e0"}}>
+                        <td style={{padding:"6px 8px"}}>
+                          <div style={{fontWeight:600,color:T.text}}>{m.label}</div>
+                          <div style={{fontSize:9,color:T.textMuted}}>Term {m.term}</div>
+                        </td>
+                        <td style={{textAlign:"center",color:T.text}}>{sd||"—"}</td>
+                        <td style={{textAlign:"center",color:T.green2,fontWeight:700}}>{sd?dp:"—"}</td>
+                        <td style={{textAlign:"center",color:ab>0?T.red:T.gray}}>{sd?ab:"—"}</td>
+                        <td style={{textAlign:"center",fontWeight:700,
+                          color:sd?attendColor(pct):T.gray}}>{sd?pct+"%":"—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
           </div>
         )}
 
-        {tab==="appointment" && (
+        {tab==="appointment"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
               📅 Book Appointment
@@ -548,7 +838,9 @@ const StudentDashboard = ({ profile, onLogout }) => {
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>
                 Request Parent-Teacher Conference
               </div>
-              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Select Teacher</label>
+              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
+                Select Teacher
+              </label>
               <select value={apptForm.teacherId} style={{marginBottom:10}}
                 onChange={e=>setApptForm(p=>({...p,teacherId:e.target.value}))}>
                 <option value="">-- Choose Teacher --</option>
@@ -557,23 +849,29 @@ const StudentDashboard = ({ profile, onLogout }) => {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
                 <div>
                   <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Date</label>
-                  <input type="date" value={apptForm.date} onChange={e=>setApptForm(p=>({...p,date:e.target.value}))}/>
+                  <input type="date" value={apptForm.date}
+                    onChange={e=>setApptForm(p=>({...p,date:e.target.value}))}/>
                 </div>
                 <div>
                   <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Time</label>
-                  <input type="time" value={apptForm.time} onChange={e=>setApptForm(p=>({...p,time:e.target.value}))}/>
+                  <input type="time" value={apptForm.time}
+                    onChange={e=>setApptForm(p=>({...p,time:e.target.value}))}/>
                 </div>
               </div>
-              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Reason / Purpose</label>
+              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
+                Reason / Purpose
+              </label>
               <textarea rows={3} value={apptForm.reason} style={{marginBottom:12}}
                 onChange={e=>setApptForm(p=>({...p,reason:e.target.value}))}
-                placeholder="e.g. Discuss academic performance in Q1..."/>
+                placeholder="e.g. Discuss academic performance..."/>
               {apptMsg&&<div style={{fontSize:12,marginBottom:10,padding:"8px 12px",borderRadius:6,
                 background:apptMsg.startsWith("✅")?"#e8f5e9":"#ffebee",
                 color:apptMsg.startsWith("✅")?T.green2:T.red}}>{apptMsg}</div>}
               <Btn onClick={submitAppt} style={{width:"100%"}}>📩 Submit Request</Btn>
             </Card>
-            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:8}}>My Appointments</div>
+            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:8}}>
+              My Appointments
+            </div>
             {appointments.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No appointments yet.</div></Card>
               :appointments.map(a=>(
@@ -600,38 +898,62 @@ const StudentDashboard = ({ profile, onLogout }) => {
 
 // ─── TEACHER DASHBOARD ───────────────────────────────────
 const TeacherDashboard = ({ profile, onLogout }) => {
-  const [tab, setTab] = useState("encode");
-  const [subjects, setSubjects] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [appointments, setAppointments] = useState([]);
-  const [selSubject, setSelSubject] = useState("");
-  const [selTerm, setSelTerm] = useState(1);
-  const [localGrades, setLocalGrades] = useState({});
-  const [dbGrades, setDbGrades] = useState([]);
-  const [toast, setToast] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [tab,setTab]=useState("encode");
+  const [subjects,setSubjects]=useState([]);
+  const [students,setStudents]=useState([]);
+  const [mySection,setMySection]=useState(null);
+  const [classStudents,setClassStudents]=useState([]);
+  const [appointments,setAppointments]=useState([]);
+  const [selSubject,setSelSubject]=useState("");
+  const [selTerm,setSelTerm]=useState(1);
+  const [localGrades,setLocalGrades]=useState({});
+  const [dbGrades,setDbGrades]=useState([]);
+  const [calendar,setCalendar]=useState([]);
+  const [attendance,setAttendance]=useState([]);
+  const [selAttMonth,setSelAttMonth]=useState(null);
+  const [localAtt,setLocalAtt]=useState({});
+  const [sections,setSections]=useState([]);
+  const [toast,setToast]=useState("");
+  const [loading,setLoading]=useState(true);
 
-  const notify = m => { setToast(m); setTimeout(()=>setToast(""),2500); };
+  const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
-  const fetchData = useCallback(async () => {
+  const fetchData=useCallback(async()=>{
     setLoading(true);
-    const [sR,aR] = await Promise.all([
+    const [sR,aR,calR,secR]=await Promise.all([
       supabase.from("subjects").select("*").eq("teacher_id",profile.id),
       supabase.from("appointments").select("*").eq("teacher_id",profile.id),
+      supabase.from("school_calendar").select("*").order("year").order("month"),
+      supabase.from("sections").select("*").eq("adviser_id",profile.id).single(),
     ]);
     if (sR.data) setSubjects(sR.data);
     if (aR.data) setAppointments(aR.data);
+    if (calR.data) setCalendar(calR.data);
+    if (secR.data) {
+      setMySection(secR.data);
+      const {data:stuData}=await supabase.from("profiles").select("*")
+        .eq("role","student").eq("section_id",secR.data.id).order("gender").order("name");
+      if (stuData) setClassStudents(stuData);
+      const stuIds=stuData?.map(s=>s.id)||[];
+      if (stuIds.length>0) {
+        const {data:attData}=await supabase.from("attendance").select("*")
+          .in("student_id",stuIds);
+        if (attData) setAttendance(attData);
+      }
+    }
+    const {data:allSec}=await supabase.from("sections").select("*");
+    if (allSec) setSections(allSec);
     setLoading(false);
-  }, [profile.id]);
+  },[profile.id]);
 
-  useEffect(()=>{ fetchData(); },[fetchData]);
+  useEffect(()=>{fetchData();},[fetchData]);
 
   useEffect(()=>{
     if (!selSubject) return;
-    const sub = subjects.find(s=>s.id===selSubject);
+    const sub=subjects.find(s=>s.id===selSubject);
     if (!sub) return;
     (async()=>{
-      const [stuR,gR] = await Promise.all([
+      const [stuR,gR]=await Promise.all([
         supabase.from("profiles").select("*").eq("role","student").eq("grade_level",sub.grade_level),
         supabase.from("grades").select("*").eq("subject_id",selSubject).eq("term",selTerm),
       ]);
@@ -640,48 +962,97 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     })();
   },[selSubject,selTerm,subjects]);
 
-  const getGradeVal = studentId => {
-    const key = `${studentId}-${selSubject}-${selTerm}`;
+  const getGradeVal=studentId=>{
+    const key=`${studentId}-${selSubject}-${selTerm}`;
     if (localGrades[key]!==undefined) return localGrades[key];
     return dbGrades.find(g=>g.student_id===studentId)?.grade||"";
   };
 
-  const saveGrades = async () => {
-    const upserts = students
+  const saveGrades=async()=>{
+    const upserts=students
       .filter(s=>localGrades[`${s.id}-${selSubject}-${selTerm}`]!==undefined)
-      .map(s=>({
-        student_id:s.id, subject_id:selSubject, term:selTerm,
+      .map(s=>({student_id:s.id,subject_id:selSubject,term:selTerm,
         grade:parseFloat(localGrades[`${s.id}-${selSubject}-${selTerm}`])||0,
-        encoded_by:profile.id,
-      }));
-    if (!upserts.length) { notify("⚠️ No changes to save."); return; }
-    const { error } = await supabase.from("grades")
+        encoded_by:profile.id}));
+    if (!upserts.length){notify("⚠️ No changes to save.");return;}
+    const {error}=await supabase.from("grades")
       .upsert(upserts,{onConflict:"student_id,subject_id,term"});
-    if (error) { notify("❌ "+error.message); return; }
+    if (error){notify("❌ "+error.message);return;}
     setLocalGrades({});
     notify("✅ Grades saved and synced!");
-    const { data } = await supabase.from("grades").select("*")
+    const {data}=await supabase.from("grades").select("*")
       .eq("subject_id",selSubject).eq("term",selTerm);
     if (data) setDbGrades(data);
   };
 
-  const updateApptStatus = async (id, status) => {
-    const { error } = await supabase.from("appointments").update({status}).eq("id",id);
-    if (error) { notify("❌ "+error.message); return; }
+  const getAttVal=(studentId,month,year,term)=>{
+    const key=`${studentId}-${month}-${year}-${term}`;
+    if (localAtt[key]!==undefined) return localAtt[key];
+    return attendance.find(a=>a.student_id===studentId&&a.month===month&&
+      a.year===year&&a.term===term)?.days_present||"";
+  };
+
+  const saveAttendance=async()=>{
+    if (!selAttMonth){notify("⚠️ Select a month first.");return;}
+    const {month,year,term}=selAttMonth;
+    const cal=calendar.find(c=>c.month===month&&c.year===year&&c.term===term);
+    const schoolDays=cal?.school_days||0;
+    const upserts=classStudents
+      .filter(s=>localAtt[`${s.id}-${month}-${year}-${term}`]!==undefined)
+      .map(s=>{
+        const dp=parseInt(localAtt[`${s.id}-${month}-${year}-${term}`])||0;
+        return {student_id:s.id,month,year,term,
+          days_present:Math.min(dp,schoolDays),encoded_by:profile.id};
+      });
+    if (!upserts.length){notify("⚠️ No changes to save.");return;}
+    const {error}=await supabase.from("attendance")
+      .upsert(upserts,{onConflict:"student_id,month,year,term"});
+    if (error){notify("❌ "+error.message);return;}
+    setLocalAtt({});
+    notify("✅ Attendance saved!");
+    fetchData();
+  };
+
+  const updateApptStatus=async(id,status)=>{
+    const {error}=await supabase.from("appointments").update({status}).eq("id",id);
+    if (error){notify("❌ "+error.message);return;}
     setAppointments(p=>p.map(a=>a.id===id?{...a,status}:a));
     notify(`✅ Appointment ${status}!`);
   };
+
+  const [addingStudent,setAddingStudent]=useState(false);
+  const handleAddStudent=async form=>{
+    if (!form.name||!form.lrn||!form.email||!form.password){
+      notify("❌ Name, LRN, email and password required."); return;
+    }
+    setAddingStudent(true);
+    const result=await edgeCall("create-user",{
+      role:"student",email:form.email,password:form.password,
+      name:form.name,lrn:form.lrn,
+      grade_level:parseInt(profile.assigned_grade_level),
+      section_id:form.section_id||null,
+      gender:form.gender,birthday:form.birthday||null,address:form.address,
+    });
+    if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
+    notify("✅ Student added!"); setAddingStudent(false); fetchData();
+  };
+
+  const tabs=[["✏️","Encode","encode"],["📅","Appts","appointments"]];
+  if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"]);
+  if (profile.is_curriculum_head) tabs.push(["➕","Students","addstudents"]);
 
   if (loading) return <Spinner/>;
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
-      <TopBar name={profile.name} sub="Teacher Panel" onLogout={onLogout}/>
+      <TopBar name={profile.name}
+        sub={`Teacher${mySection?" · Adviser: "+mySection.name:""}${profile.is_curriculum_head?" · Curriculum Head Gr."+profile.assigned_grade_level:""}`}
+        onLogout={onLogout}/>
       <Toast msg={toast}/>
       <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
 
-        {tab==="encode" && (
+        {tab==="encode"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>✏️ Encode Grades</div>
             <Card style={{marginBottom:12}}>
@@ -706,22 +1077,21 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             {selSubject?(
               <Card>
                 <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>
-                  {subjects.find(s=>s.id===selSubject)?.name} — Q{selTerm}
+                  {subjects.find(s=>s.id===selSubject)?.name} — Term {selTerm}
                 </div>
                 {students.length===0
                   ?<div style={{textAlign:"center",color:T.gray,padding:20}}>No students found.</div>
                   :students.map(s=>(
                     <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,
-                      padding:"8px 0",borderBottom:`1px solid #e0f0e0`}}>
+                      padding:"8px 0",borderBottom:"1px solid #e0f0e0"}}>
                       <div style={{flex:1}}>
                         <div style={{fontSize:13,fontWeight:600,color:T.text}}>{s.name}</div>
-                        <div style={{fontSize:11,color:T.textMuted}}>{s.student_no}</div>
+                        <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn}</div>
                       </div>
                       <input type="number" min="0" max="100" style={{width:72,textAlign:"center"}}
                         value={getGradeVal(s.id)}
                         onChange={e=>setLocalGrades(p=>({
-                          ...p,[`${s.id}-${selSubject}-${selTerm}`]:e.target.value
-                        }))}
+                          ...p,[`${s.id}-${selSubject}-${selTerm}`]:e.target.value}))}
                         placeholder="0–100"/>
                     </div>
                   ))
@@ -738,9 +1108,144 @@ const TeacherDashboard = ({ profile, onLogout }) => {
           </div>
         )}
 
-        {tab==="appointments" && (
+        {tab==="myclass"&&mySection&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📅 Appointments</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
+              🏫 My Advisory Class
+            </div>
+            <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
+              {mySection.name} · Grade {mySection.grade_level} · {classStudents.length} students
+            </div>
+            {classStudents.filter(s=>s.gender==="Male").length>0&&(
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:700,color:T.blue,
+                  padding:"4px 10px",background:"#e3f2fd",borderRadius:6,
+                  borderLeft:"3px solid #1976d2",marginBottom:6}}>
+                  ♂ Male ({classStudents.filter(s=>s.gender==="Male").length})
+                </div>
+                {classStudents.filter(s=>s.gender==="Male").map(s=>(
+                  <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn} · {s.birthday||"—"}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>{s.address||"—"}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {classStudents.filter(s=>s.gender==="Female").length>0&&(
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:"#c2185b",
+                  padding:"4px 10px",background:"#fce4ec",borderRadius:6,
+                  borderLeft:"3px solid #c2185b",marginBottom:6}}>
+                  ♀ Female ({classStudents.filter(s=>s.gender==="Female").length})
+                </div>
+                {classStudents.filter(s=>s.gender==="Female").map(s=>(
+                  <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn} · {s.birthday||"—"}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>{s.address||"—"}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {classStudents.length===0&&(
+              <Card><div style={{textAlign:"center",color:T.gray,padding:20}}>
+                No students in this section yet.
+              </div></Card>
+            )}
+          </div>
+        )}
+
+        {tab==="attendance"&&mySection&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              📆 Encode Attendance
+            </div>
+            <Card style={{marginBottom:12}}>
+              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
+                Select Month
+              </label>
+              <select value={selAttMonth?`${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`:""}
+                onChange={e=>{
+                  if (!e.target.value){setSelAttMonth(null);return;}
+                  const [m,y,t]=e.target.value.split("-");
+                  const found=TERM_MONTHS.find(x=>x.month===parseInt(m)&&
+                    x.year===parseInt(y)&&x.term===parseInt(t));
+                  setSelAttMonth(found||null);
+                }}>
+                <option value="">-- Select Month --</option>
+                {TERM_MONTHS.map((m,i)=>{
+                  const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===m.term);
+                  return (
+                    <option key={i} value={`${m.month}-${m.year}-${m.term}`}>
+                      {m.label} (Term {m.term}) — {cal?.school_days||0} school days
+                    </option>
+                  );
+                })}
+              </select>
+            </Card>
+            {selAttMonth&&(()=>{
+              const cal=calendar.find(c=>c.month===selAttMonth.month&&
+                c.year===selAttMonth.year&&c.term===selAttMonth.term);
+              const schoolDays=cal?.school_days||0;
+              return (
+                <Card>
+                  <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:4}}>
+                    {selAttMonth.label} — Term {selAttMonth.term}
+                  </div>
+                  <div style={{fontSize:12,color:T.textMuted,marginBottom:10}}>
+                    School Days: <strong>{schoolDays}</strong>
+                    {schoolDays===0&&<span style={{color:T.red}}> (Admin has not set school days yet)</span>}
+                  </div>
+                  {classStudents.length===0
+                    ?<div style={{textAlign:"center",color:T.gray,padding:20}}>No students.</div>
+                    :classStudents.map(s=>(
+                      <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,
+                        padding:"8px 0",borderBottom:"1px solid #e0f0e0"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,color:T.text}}>{s.name}</div>
+                          <div style={{fontSize:11,color:T.textMuted}}>{s.gender}</div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:4}}>
+                          <input type="number" min="0" max={schoolDays}
+                            style={{width:60,textAlign:"center"}}
+                            value={getAttVal(s.id,selAttMonth.month,selAttMonth.year,selAttMonth.term)}
+                            onChange={e=>setLocalAtt(p=>({
+                              ...p,[`${s.id}-${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`]:
+                                e.target.value}))}
+                            placeholder="Days"/>
+                          <span style={{fontSize:10,color:T.textMuted}}>/{schoolDays}</span>
+                        </div>
+                      </div>
+                    ))
+                  }
+                  <Btn onClick={saveAttendance} style={{width:"100%",marginTop:12}}>
+                    💾 Save Attendance
+                  </Btn>
+                </Card>
+              );
+            })()}
+          </div>
+        )}
+
+        {tab==="addstudents"&&profile.is_curriculum_head&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              ➕ Add Students — Grade {profile.assigned_grade_level}
+            </div>
+            <AddStudentForm
+              sections={sections}
+              gradeFilter={profile.assigned_grade_level}
+              onAdd={handleAddStudent}
+              loading={addingStudent}/>
+          </div>
+        )}
+
+        {tab==="appointments"&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              📅 Appointments
+            </div>
             {appointments.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No appointments.</div></Card>
               :appointments.map(a=>(
@@ -766,181 +1271,228 @@ const TeacherDashboard = ({ profile, onLogout }) => {
           </div>
         )}
       </div>
-      <BottomNav
-        tabs={[["✏️","Encode","encode"],["📅","Appts","appointments"]]}
-        active={tab} setActive={setTab}/>
+      <BottomNav tabs={tabs} active={tab} setActive={setTab}/>
     </div>
   );
 };
 
 // ─── ADMIN DASHBOARD ─────────────────────────────────────
 const AdminDashboard = ({ profile, onLogout }) => {
-  const [tab, setTab] = useState("overview");
-  const [students, setStudents] = useState([]);
-  const [teachers, setTeachers] = useState([]);
-  const [subjects, setSubjects] = useState([]);
-  const [grades, setGrades] = useState([]);
-  const [appointments, setAppointments] = useState([]);
-  const [toast, setToast] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [editGrade, setEditGrade] = useState(null);
-  const [resetModal, setResetModal] = useState(null);
-  const [filterGL, setFilterGL] = useState("all");
+  const [tab,setTab]=useState("overview");
+  const [students,setStudents]=useState([]);
+  const [teachers,setTeachers]=useState([]);
+  const [subjects,setSubjects]=useState([]);
+  const [grades,setGrades]=useState([]);
+  const [appointments,setAppointments]=useState([]);
+  const [sections,setSections]=useState([]);
+  const [calendar,setCalendar]=useState([]);
+  const [toast,setToast]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [editGrade,setEditGrade]=useState(null);
+  const [resetModal,setResetModal]=useState(null);
+  const [addingStudent,setAddingStudent]=useState(false);
 
-  const [nStudent, setNStudent] = useState({
-    name:"",student_no:"",grade_level:7,section:"",
-    gender:"Male",birthday:"",address:"",email:"",password:""
-  });
-  const [nTeacher, setNTeacher] = useState({name:"",email:"",password:""});
-  const [nSubject, setNSubject] = useState({name:"",grade_level:7,teacher_id:""});
-  const [nGrade, setNGrade] = useState({student_id:"",subject_id:"",term:1,grade:""});
+  const [nTeacher,setNTeacher]=useState({name:"",email:"",password:""});
+  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:""});
+  const [nGrade,setNGrade]=useState({student_id:"",subject_id:"",term:1,grade:""});
+  const [nSection,setNSection]=useState({name:"",grade_level:7,adviser_id:""});
 
-  const notify = m => { setToast(m); setTimeout(()=>setToast(""),2500); };
+  const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll=useCallback(async()=>{
     setLoading(true);
-    const [sR,tR,subR,gR,aR] = await Promise.all([
-      supabase.from("profiles").select("*").eq("role","student").order("name"),
+    const [sR,tR,subR,gR,aR,secR,calR]=await Promise.all([
+      supabase.from("profiles").select("*").eq("role","student").order("grade_level").order("name"),
       supabase.from("profiles").select("*").eq("role","teacher").order("name"),
       supabase.from("subjects").select("*").order("grade_level"),
       supabase.from("grades").select("*"),
       supabase.from("appointments").select("*").order("created_at",{ascending:false}),
+      supabase.from("sections").select("*").order("grade_level").order("name"),
+      supabase.from("school_calendar").select("*").order("year").order("month"),
     ]);
     if (sR.data) setStudents(sR.data);
     if (tR.data) setTeachers(tR.data);
     if (subR.data) setSubjects(subR.data);
     if (gR.data) setGrades(gR.data);
     if (aR.data) setAppointments(aR.data);
+    if (secR.data) setSections(secR.data);
+    if (calR.data) setCalendar(calR.data);
     setLoading(false);
-  }, []);
+  },[]);
 
-  useEffect(()=>{ fetchAll(); },[fetchAll]);
+  useEffect(()=>{fetchAll();},[fetchAll]);
 
-  const addStudent = async () => {
-    if (!nStudent.name||!nStudent.student_no||!nStudent.email||!nStudent.password) {
-      notify("❌ Name, student no., email and password required."); return;
+  const handleAddStudent=async form=>{
+    if (!form.name||!form.lrn||!form.email||!form.password){
+      notify("❌ Name, LRN, email and password required."); return;
     }
-    notify("⏳ Creating student...");
-    const result = await edgeCall("create-user",{
-      role:"student", email:nStudent.email, password:nStudent.password,
-      name:nStudent.name, student_no:nStudent.student_no,
-      grade_level:parseInt(nStudent.grade_level), section:nStudent.section,
-      gender:nStudent.gender, birthday:nStudent.birthday||null, address:nStudent.address,
+    setAddingStudent(true);
+    const result=await edgeCall("create-user",{
+      role:"student",email:form.email,password:form.password,
+      name:form.name,lrn:form.lrn,
+      grade_level:parseInt(form.grade_level),
+      section_id:form.section_id||null,
+      gender:form.gender,birthday:form.birthday||null,address:form.address,
     });
-    if (result.error) { notify("❌ "+result.error); return; }
-    setNStudent({name:"",student_no:"",grade_level:7,section:"",
-      gender:"Male",birthday:"",address:"",email:"",password:""});
-    notify("✅ Student added!"); fetchAll();
+    if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
+    notify("✅ Student added!"); setAddingStudent(false); fetchAll();
   };
 
-  const delStudent = async id => {
-    if (!window.confirm("Delete this student? All grades and appointments will also be removed.")) return;
-    notify("⏳ Deleting student...");
-    const result = await edgeCall("delete-user",{userId:id,role:"student"});
-    if (result.error) { notify("❌ "+result.error); return; }
+  const delStudent=async id=>{
+    if (!window.confirm("Delete this student? All their data will be removed.")) return;
+    notify("⏳ Deleting...");
+    const result=await edgeCall("delete-user",{userId:id,role:"student"});
+    if (result.error){notify("❌ "+result.error);return;}
     notify("🗑️ Student deleted."); fetchAll();
   };
 
-  const addTeacher = async () => {
-    if (!nTeacher.name||!nTeacher.email||!nTeacher.password) {
+  const reassignSection=async(studentId,sectionId)=>{
+    const sec=sections.find(s=>s.id===sectionId);
+    const stu=students.find(s=>s.id===studentId);
+    const gradeLevel=sec?sec.grade_level:stu?.grade_level;
+    await supabase.from("profiles").update({
+      section_id:sectionId||null,grade_level:gradeLevel
+    }).eq("id",studentId);
+    notify("✅ Section reassigned!"); fetchAll();
+  };
+
+  const addTeacher=async()=>{
+    if (!nTeacher.name||!nTeacher.email||!nTeacher.password){
       notify("❌ Name, email and password required."); return;
     }
     notify("⏳ Creating teacher...");
-    const result = await edgeCall("create-user",{
-      role:"teacher", email:nTeacher.email, password:nTeacher.password, name:nTeacher.name,
+    const result=await edgeCall("create-user",{
+      role:"teacher",email:nTeacher.email,password:nTeacher.password,name:nTeacher.name,
     });
-    if (result.error) { notify("❌ "+result.error); return; }
+    if (result.error){notify("❌ "+result.error);return;}
     setNTeacher({name:"",email:"",password:""});
     notify("✅ Teacher added!"); fetchAll();
   };
 
-  const delTeacher = async id => {
-    if (!window.confirm("Delete this teacher? They will be unassigned from all subjects.")) return;
-    notify("⏳ Deleting teacher...");
-    const result = await edgeCall("delete-user",{userId:id,role:"teacher"});
-    if (result.error) { notify("❌ "+result.error); return; }
+  const delTeacher=async id=>{
+    if (!window.confirm("Delete this teacher?")) return;
+    notify("⏳ Deleting...");
+    const result=await edgeCall("delete-user",{userId:id,role:"teacher"});
+    if (result.error){notify("❌ "+result.error);return;}
     notify("🗑️ Teacher deleted."); fetchAll();
   };
 
-  const handleResetPassword = async newPassword => {
-    if (!newPassword||newPassword.length<6) { notify("❌ Min 6 characters."); return; }
-    notify("⏳ Resetting password...");
-    const result = await edgeCall("reset-password",{userId:resetModal.userId,newPassword});
-    if (result.error) { notify("❌ "+result.error); return; }
+  const toggleCurriculumHead=async(teacher,gl)=>{
+    const isHead=teacher.is_curriculum_head&&teacher.assigned_grade_level===parseInt(gl);
+    await supabase.from("profiles").update({
+      is_curriculum_head:!isHead,
+      assigned_grade_level:isHead?null:parseInt(gl)
+    }).eq("id",teacher.id);
+    notify(isHead?"✅ Curriculum Head removed!":"✅ Curriculum Head assigned!");
+    fetchAll();
+  };
+
+  const handleResetPassword=async newPassword=>{
+    if (!newPassword||newPassword.length<6){notify("❌ Min 6 characters.");return;}
+    notify("⏳ Resetting...");
+    const result=await edgeCall("reset-password",{userId:resetModal.userId,newPassword});
+    if (result.error){notify("❌ "+result.error);return;}
     notify(`✅ Password reset for ${resetModal.name}!`);
     setResetModal(null);
   };
 
-  const addSubject = async () => {
-    if (!nSubject.name) { notify("❌ Subject name required."); return; }
-    const { error } = await supabase.from("subjects").insert({
-      name:nSubject.name, grade_level:parseInt(nSubject.grade_level),
+  const addSubject=async()=>{
+    if (!nSubject.name){notify("❌ Subject name required.");return;}
+    const {error}=await supabase.from("subjects").insert({
+      name:nSubject.name,grade_level:parseInt(nSubject.grade_level),
       teacher_id:nSubject.teacher_id||null,
     });
-    if (error) { notify("❌ "+error.message); return; }
+    if (error){notify("❌ "+error.message);return;}
     setNSubject({name:"",grade_level:7,teacher_id:""});
     notify("✅ Subject added!"); fetchAll();
   };
 
-  const delSubject = async id => {
+  const delSubject=async id=>{
     await supabase.from("grades").delete().eq("subject_id",id);
     await supabase.from("subjects").delete().eq("id",id);
     notify("🗑️ Subject deleted."); fetchAll();
   };
 
-  const reassignTeacher = async (subId, teacherId) => {
+  const reassignTeacher=async(subId,teacherId)=>{
     await supabase.from("subjects").update({teacher_id:teacherId||null}).eq("id",subId);
     notify("✅ Teacher reassigned!"); fetchAll();
   };
 
-  const saveGrade = async () => {
-    if (!nGrade.student_id||!nGrade.subject_id||!nGrade.grade) {
-      notify("❌ Fill all fields."); return;
+  const addSection=async()=>{
+    if (!nSection.name){notify("❌ Section name required.");return;}
+    const {error}=await supabase.from("sections").insert({
+      name:nSection.name,grade_level:parseInt(nSection.grade_level),
+      adviser_id:nSection.adviser_id||null,
+    });
+    if (error){notify("❌ "+error.message);return;}
+    setNSection({name:"",grade_level:7,adviser_id:""});
+    notify("✅ Section added!"); fetchAll();
+  };
+
+  const delSection=async id=>{
+    await supabase.from("profiles").update({section_id:null}).eq("section_id",id);
+    await supabase.from("sections").delete().eq("id",id);
+    notify("🗑️ Section deleted."); fetchAll();
+  };
+
+  const reassignAdviser=async(secId,adviserId)=>{
+    await supabase.from("sections").update({adviser_id:adviserId||null}).eq("id",secId);
+    notify("✅ Adviser assigned!"); fetchAll();
+  };
+
+  const saveGrade=async()=>{
+    if (!nGrade.student_id||!nGrade.subject_id||!nGrade.grade){
+      notify("❌ Fill all fields.");return;
     }
-    const { error } = await supabase.from("grades").upsert({
-      student_id:nGrade.student_id, subject_id:nGrade.subject_id,
-      term:parseInt(nGrade.term), grade:parseFloat(nGrade.grade), encoded_by:profile.id,
+    const {error}=await supabase.from("grades").upsert({
+      student_id:nGrade.student_id,subject_id:nGrade.subject_id,
+      term:parseInt(nGrade.term),grade:parseFloat(nGrade.grade),encoded_by:profile.id,
     },{onConflict:"student_id,subject_id,term"});
-    if (error) { notify("❌ "+error.message); return; }
+    if (error){notify("❌ "+error.message);return;}
     setNGrade({student_id:"",subject_id:"",term:1,grade:""});
     notify("✅ Grade saved!"); fetchAll();
   };
 
-  const saveEditGrade = async () => {
-    const { error } = await supabase.from("grades")
+  const saveEditGrade=async()=>{
+    const {error}=await supabase.from("grades")
       .update({grade:parseFloat(editGrade.grade)})
       .eq("student_id",editGrade.student_id)
       .eq("subject_id",editGrade.subject_id)
       .eq("term",editGrade.term);
-    if (error) { notify("❌ "+error.message); return; }
+    if (error){notify("❌ "+error.message);return;}
     setEditGrade(null); notify("✅ Grade updated!"); fetchAll();
   };
 
-  const delGrade = async (studentId,subjectId,term) => {
+  const delGrade=async(studentId,subjectId,term)=>{
     await supabase.from("grades").delete()
       .eq("student_id",studentId).eq("subject_id",subjectId).eq("term",term);
     notify("🗑️ Grade deleted."); fetchAll();
   };
 
-  const updateApptStatus = async (id, status) => {
+  const saveSchoolDays=async(month,year,term,days)=>{
+    const {error}=await supabase.from("school_calendar")
+      .upsert({month,year,term,school_days:parseInt(days)||0},
+        {onConflict:"month,year,term"});
+    if (error){notify("❌ "+error.message);return;}
+    notify("✅ School days saved!"); fetchAll();
+  };
+
+  const updateApptStatus=async(id,status)=>{
     await supabase.from("appointments").update({status}).eq("id",id);
     notify(`✅ Appointment ${status}.`); fetchAll();
   };
 
-  const delAppt = async id => {
+  const delAppt=async id=>{
     await supabase.from("appointments").delete().eq("id",id);
     notify("🗑️ Appointment deleted."); fetchAll();
   };
 
-  const stats = [
+  const stats=[
     {label:"Students",value:students.length,icon:"🎓",color:T.green2},
     {label:"Teachers",value:teachers.length,icon:"👨‍🏫",color:T.blue},
     {label:"Subjects",value:subjects.length,icon:"📚",color:T.yellowDark},
-    {label:"Appointments",value:appointments.length,icon:"📅",color:"#7b1fa2"},
+    {label:"Sections",value:sections.length,icon:"🏫",color:"#7b1fa2"},
   ];
-
-  const filteredStudents = filterGL==="all"
-    ?students:students.filter(s=>s.grade_level===parseInt(filterGL));
 
   if (loading) return <Spinner/>;
 
@@ -950,28 +1502,27 @@ const AdminDashboard = ({ profile, onLogout }) => {
       <TopBar name="Admin Panel" sub={profile.name} onLogout={onLogout}/>
       <Toast msg={toast}/>
 
-      {/* Reset Password Modal */}
       {resetModal&&(
         <ResetPasswordModal user={resetModal}
           onConfirm={handleResetPassword} onClose={()=>setResetModal(null)}/>
       )}
 
-      {/* Edit Grade Modal */}
       {editGrade&&(
         <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:200,
           display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <Card style={{width:"100%",maxWidth:360}}>
             <div style={{fontSize:14,fontWeight:700,color:T.green1,marginBottom:12}}>✏️ Edit Grade</div>
             <div style={{fontSize:12,color:T.textMuted,marginBottom:8}}>
-              Student: {students.find(s=>s.id===editGrade.student_id)?.name}<br/>
-              Subject: {subjects.find(s=>s.id===editGrade.subject_id)?.name} · Q{editGrade.term}
+              {students.find(s=>s.id===editGrade.student_id)?.name} ·{" "}
+              {subjects.find(s=>s.id===editGrade.subject_id)?.name} · Term {editGrade.term}
             </div>
             <input type="number" min="0" max="100" value={editGrade.grade}
               onChange={e=>setEditGrade(p=>({...p,grade:e.target.value}))} style={{marginBottom:12}}/>
             <div style={{display:"flex",gap:8}}>
               <Btn onClick={saveEditGrade} style={{flex:1}}>💾 Save</Btn>
-              <Btn onClick={()=>setEditGrade(null)} color="#e0e0e0"
-                style={{flex:1,color:T.text}}>Cancel</Btn>
+              <Btn onClick={()=>setEditGrade(null)} color="#e0e0e0" style={{flex:1,color:T.text}}>
+                Cancel
+              </Btn>
             </div>
           </Card>
         </div>
@@ -993,9 +1544,8 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 </Card>
               ))}
             </div>
-            {/* DepEd color banner */}
-            <Card style={{padding:12,marginBottom:10}}>
-              <div style={{display:"flex",height:8,borderRadius:6,overflow:"hidden",marginBottom:10}}>
+            <Card style={{padding:12}}>
+              <div style={{display:"flex",height:8,borderRadius:6,overflow:"hidden",marginBottom:8}}>
                 <div style={{flex:1,background:T.blue}}/>
                 <div style={{flex:1,background:T.red}}/>
                 <div style={{flex:1,background:T.yellow}}/>
@@ -1009,74 +1559,24 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
         {tab==="students"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>🎓 Manage Students</div>
-            <Card style={{marginBottom:12}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Student</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                <input placeholder="Full Name *" value={nStudent.name}
-                  onChange={e=>setNStudent(p=>({...p,name:e.target.value}))}/>
-                <input placeholder="Student No. *" value={nStudent.student_no}
-                  onChange={e=>setNStudent(p=>({...p,student_no:e.target.value}))}/>
-                <select value={nStudent.grade_level}
-                  onChange={e=>setNStudent(p=>({...p,grade_level:e.target.value}))}>
-                  {[7,8,9,10].map(g=><option key={g} value={g}>Grade {g}</option>)}
-                </select>
-                <input placeholder="Section" value={nStudent.section}
-                  onChange={e=>setNStudent(p=>({...p,section:e.target.value}))}/>
-                <select value={nStudent.gender}
-                  onChange={e=>setNStudent(p=>({...p,gender:e.target.value}))}>
-                  <option>Male</option><option>Female</option>
-                </select>
-                <input type="date" value={nStudent.birthday}
-                  onChange={e=>setNStudent(p=>({...p,birthday:e.target.value}))}/>
-                <input placeholder="Email *" value={nStudent.email}
-                  onChange={e=>setNStudent(p=>({...p,email:e.target.value}))}/>
-                <input type="password" placeholder="Password *" value={nStudent.password}
-                  onChange={e=>setNStudent(p=>({...p,password:e.target.value}))}/>
-              </div>
-              <input placeholder="Address" value={nStudent.address}
-                onChange={e=>setNStudent(p=>({...p,address:e.target.value}))} style={{marginBottom:10}}/>
-              <Btn onClick={addStudent} style={{width:"100%"}}>➕ Add Student</Btn>
-            </Card>
-            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-              {["all",7,8,9,10].map(g=>(
-                <button key={g} onClick={()=>setFilterGL(String(g))} style={{
-                  padding:"5px 12px",borderRadius:20,fontSize:12,fontWeight:700,
-                  border:`1px solid ${filterGL===String(g)?T.green3:"#c8e6c9"}`,
-                  cursor:"pointer",
-                  background:filterGL===String(g)?T.green3:T.bgCard,
-                  color:filterGL===String(g)?T.white:T.textMuted
-                }}>{g==="all"?"All":"Gr."+g}</button>
-              ))}
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              🎓 Manage Students
             </div>
-            {filteredStudents.length===0
-              ?<Card><div style={{textAlign:"center",color:T.gray,padding:16}}>No students found.</div></Card>
-              :filteredStudents.map(s=>(
-                <Card key={s.id} style={{marginBottom:8,padding:"10px 14px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
-                      <div style={{fontSize:11,color:T.textMuted}}>
-                        {s.student_no} · Grade {s.grade_level} – {s.section}
-                      </div>
-                      <div style={{fontSize:11,color:T.textMuted}}>{s.email}</div>
-                    </div>
-                    <div style={{display:"flex",gap:6,flexShrink:0}}>
-                      <Btn color={T.blue} style={{padding:"6px 10px",fontSize:12}}
-                        onClick={()=>setResetModal({userId:s.id,name:s.name,role:"student"})}>🔑</Btn>
-                      <Btn color={T.red} style={{padding:"6px 10px",fontSize:12}}
-                        onClick={()=>delStudent(s.id)}>🗑️</Btn>
-                    </div>
-                  </div>
-                </Card>
-              ))
-            }
+            <AddStudentForm sections={sections} onAdd={handleAddStudent} loading={addingStudent}/>
+            <StudentListGrouped
+              students={students} sections={sections} teachers={teachers}
+              showActions={true}
+              onDelete={delStudent}
+              onReset={u=>setResetModal(u)}
+              onReassign={reassignSection}/>
           </div>
         )}
 
         {tab==="teachers"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>👨‍🏫 Manage Teachers</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              👨‍🏫 Manage Teachers
+            </div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Teacher</div>
               <div style={{display:"grid",gap:8,marginBottom:8}}>
@@ -1089,34 +1589,121 @@ const AdminDashboard = ({ profile, onLogout }) => {
               </div>
               <Btn onClick={addTeacher} style={{width:"100%"}}>➕ Add Teacher</Btn>
             </Card>
-            {teachers.length===0
-              ?<Card><div style={{textAlign:"center",color:T.gray,padding:16}}>No teachers yet.</div></Card>
-              :teachers.map(t=>(
-                <Card key={t.id} style={{marginBottom:8,padding:"10px 14px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:13,color:T.text}}>{t.name}</div>
-                      <div style={{fontSize:11,color:T.textMuted}}>{t.email}</div>
-                      <div style={{fontSize:11,color:T.textMuted}}>
-                        {subjects.filter(s=>s.teacher_id===t.id).map(s=>s.name).join(", ")||"No subjects assigned"}
-                      </div>
+            {teachers.map(t=>(
+              <Card key={t.id} style={{marginBottom:8,padding:"10px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:700,fontSize:13,color:T.text}}>{t.name}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>{t.email}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>
+                      {subjects.filter(s=>s.teacher_id===t.id).map(s=>s.name).join(", ")||"No subjects"}
                     </div>
-                    <div style={{display:"flex",gap:6,flexShrink:0}}>
-                      <Btn color={T.blue} style={{padding:"6px 10px",fontSize:12}}
-                        onClick={()=>setResetModal({userId:t.id,name:t.name,role:"teacher"})}>🔑</Btn>
-                      <Btn color={T.red} style={{padding:"6px 10px",fontSize:12}}
-                        onClick={()=>delTeacher(t.id)}>🗑️</Btn>
-                    </div>
+                    {t.is_curriculum_head&&(
+                      <Badge text={`Curriculum Head Gr.${t.assigned_grade_level}`} color={T.green2}/>
+                    )}
+                    {sections.find(s=>s.adviser_id===t.id)&&(
+                      <Badge text={`Adviser: ${sections.find(s=>s.adviser_id===t.id)?.name}`}
+                        color="#7b1fa2"/>
+                    )}
                   </div>
-                </Card>
-              ))
-            }
+                  <div style={{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                    <Btn color={T.blue} style={{padding:"5px 8px",fontSize:11}}
+                      onClick={()=>setResetModal({userId:t.id,name:t.name,role:"teacher"})}>🔑</Btn>
+                    <Btn color={T.red} style={{padding:"5px 8px",fontSize:11}}
+                      onClick={()=>delTeacher(t.id)}>🗑️</Btn>
+                  </div>
+                </div>
+                <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #e0f0e0"}}>
+                  <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Curriculum Head:</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {[7,8,9,10].map(gl=>(
+                      <button key={gl} onClick={()=>toggleCurriculumHead(t,gl)} style={{
+                        padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,
+                        border:"none",cursor:"pointer",
+                        background:t.is_curriculum_head&&t.assigned_grade_level===gl
+                          ?T.green3:T.bgPanel,
+                        color:t.is_curriculum_head&&t.assigned_grade_level===gl
+                          ?T.white:T.textMuted}}>
+                        Gr.{gl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {tab==="sections"&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              🏫 Manage Sections
+            </div>
+            <Card style={{marginBottom:12}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Section</div>
+              <div style={{display:"grid",gap:8,marginBottom:8}}>
+                <input placeholder="Section Name * e.g. Sampaguita" value={nSection.name}
+                  onChange={e=>setNSection(p=>({...p,name:e.target.value}))}/>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <select value={nSection.grade_level}
+                    onChange={e=>setNSection(p=>({...p,grade_level:e.target.value}))}>
+                    {[7,8,9,10].map(g=><option key={g} value={g}>Grade {g}</option>)}
+                  </select>
+                  <select value={nSection.adviser_id}
+                    onChange={e=>setNSection(p=>({...p,adviser_id:e.target.value}))}>
+                    <option value="">-- Adviser (opt) --</option>
+                    {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <Btn onClick={addSection} style={{width:"100%"}}>➕ Add Section</Btn>
+            </Card>
+            {[7,8,9,10].map(gl=>{
+              const glSecs=sections.filter(s=>s.grade_level===gl);
+              if (!glSecs.length) return null;
+              return (
+                <div key={gl} style={{marginBottom:12}}>
+                  <div style={{fontSize:12,fontWeight:700,color:T.white,
+                    background:T.green1,padding:"4px 10px",borderRadius:6,marginBottom:6}}>
+                    Grade {gl}
+                  </div>
+                  {glSecs.map(sec=>{
+                    const adviser=teachers.find(t=>t.id===sec.adviser_id);
+                    const count=students.filter(s=>s.section_id===sec.id).length;
+                    return (
+                      <Card key={sec.id} style={{marginBottom:6,padding:"10px 12px"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",
+                          alignItems:"center",marginBottom:6}}>
+                          <div>
+                            <div style={{fontWeight:700,fontSize:13,color:T.text}}>{sec.name}</div>
+                            <div style={{fontSize:11,color:T.textMuted}}>{count} students</div>
+                          </div>
+                          <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
+                            onClick={()=>delSection(sec.id)}>🗑️</Btn>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Adviser:</div>
+                          <select value={sec.adviser_id||""}
+                            onChange={e=>reassignAdviser(sec.id,e.target.value)}
+                            style={{fontSize:12,padding:"5px 8px"}}>
+                            <option value="">-- Unassigned --</option>
+                            {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {tab==="subjects"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📚 Manage Subjects</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              📚 Manage Subjects
+            </div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Subject</div>
               <div style={{display:"grid",gap:8,marginBottom:8}}>
@@ -1141,9 +1728,8 @@ const AdminDashboard = ({ profile, onLogout }) => {
               if (!subs.length) return null;
               return (
                 <div key={gl} style={{marginBottom:12}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.green2,marginBottom:6,
-                    background:"#e8f5e9",padding:"4px 10px",borderRadius:6,
-                    borderLeft:`3px solid ${T.green3}`}}>
+                  <div style={{fontSize:12,fontWeight:700,color:T.white,
+                    background:T.green1,padding:"4px 10px",borderRadius:6,marginBottom:6}}>
                     Grade {gl}
                   </div>
                   {subs.map(s=>(
@@ -1173,19 +1759,27 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
         {tab==="grades"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📝 Manage Grades</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              📝 Manage Grades
+            </div>
             <Card style={{marginBottom:12}}>
-              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add / Update Grade</div>
+              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>
+                ➕ Add / Update Grade
+              </div>
               <div style={{display:"grid",gap:8,marginBottom:8}}>
                 <select value={nGrade.student_id}
                   onChange={e=>setNGrade(p=>({...p,student_id:e.target.value}))}>
                   <option value="">-- Select Student --</option>
-                  {students.map(s=><option key={s.id} value={s.id}>{s.name} ({s.student_no})</option>)}
+                  {students.map(s=>(
+                    <option key={s.id} value={s.id}>{s.name} (LRN: {s.lrn})</option>
+                  ))}
                 </select>
                 <select value={nGrade.subject_id}
                   onChange={e=>setNGrade(p=>({...p,subject_id:e.target.value}))}>
                   <option value="">-- Select Subject --</option>
-                  {subjects.map(s=><option key={s.id} value={s.id}>{s.name} (Gr.{s.grade_level})</option>)}
+                  {subjects.map(s=>(
+                    <option key={s.id} value={s.id}>{s.name} (Gr.{s.grade_level})</option>
+                  ))}
                 </select>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nGrade.term} onChange={e=>setNGrade(p=>({...p,term:e.target.value}))}>
@@ -1199,7 +1793,6 @@ const AdminDashboard = ({ profile, onLogout }) => {
               </div>
               <Btn onClick={saveGrade} style={{width:"100%"}}>💾 Save Grade</Btn>
             </Card>
-            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:8}}>All Records</div>
             {grades.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:16}}>No grades yet.</div></Card>
               :grades.map(g=>{
@@ -1212,10 +1805,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
                         <div style={{fontSize:12,fontWeight:600,color:T.text}}>{stu.name}</div>
-                        <div style={{fontSize:11,color:T.textMuted}}>{sub.name} · Q{g.term}</div>
+                        <div style={{fontSize:11,color:T.textMuted}}>{sub.name} · Term {g.term}</div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:18,fontWeight:900,color:remark(g.grade).c}}>{g.grade}</span>
+                        <span style={{fontSize:18,fontWeight:900,color:remark(g.grade).c}}>
+                          {g.grade}
+                        </span>
                         <Btn color={T.blue} style={{padding:"5px 8px",fontSize:11}}
                           onClick={()=>setEditGrade({...g})}>✏️</Btn>
                         <Btn color={T.red} style={{padding:"5px 8px",fontSize:11}}
@@ -1229,9 +1824,59 @@ const AdminDashboard = ({ profile, onLogout }) => {
           </div>
         )}
 
+        {tab==="calendar"&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
+              📅 School Calendar
+            </div>
+            <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
+              Encode the number of school days per month. Adviser attendance is based on these values.
+            </div>
+            {[1,2,3].map(term=>{
+              const termLabel=term===1?"Term 1: June 8 – Sept 15, 2026"
+                :term===2?"Term 2: Sept 16 – Dec 18, 2026"
+                :"Term 3: Jan 4 – Apr 8, 2027";
+              const termMonths=TERM_MONTHS.filter(m=>m.term===term);
+              return (
+                <div key={term} style={{marginBottom:14}}>
+                  <div style={{fontSize:12,fontWeight:700,color:T.white,
+                    background:term===1?T.green2:term===2?T.blue:"#7b1fa2",
+                    padding:"6px 12px",borderRadius:8,marginBottom:8}}>
+                    {termLabel}
+                  </div>
+                  {termMonths.map((m,i)=>{
+                    const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===m.term);
+                    const [days,setDays]=useState(cal?.school_days||0);
+                    return (
+                      <Card key={i} style={{marginBottom:6,padding:"10px 14px"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          <div style={{flex:1,fontSize:13,fontWeight:600,color:T.text}}>
+                            {m.label}
+                          </div>
+                          <input type="number" min="0" max="31"
+                            style={{width:70,textAlign:"center"}}
+                            defaultValue={cal?.school_days||0}
+                            onChange={e=>setDays(e.target.value)}
+                            placeholder="Days"/>
+                          <Btn color={T.green3} style={{padding:"6px 10px",fontSize:12}}
+                            onClick={()=>saveSchoolDays(m.month,m.year,m.term,days)}>
+                            💾
+                          </Btn>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {tab==="appointments"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📅 All Appointments</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              📅 All Appointments
+            </div>
             {appointments.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No appointments.</div></Card>
               :appointments.map(a=>(
@@ -1264,8 +1909,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
       <BottomNav
         tabs={[
           ["📊","Overview","overview"],["🎓","Students","students"],
-          ["👨‍🏫","Teachers","teachers"],["📚","Subjects","subjects"],
-          ["📝","Grades","grades"],["📅","Appts","appointments"],
+          ["👨‍🏫","Teachers","teachers"],["🏫","Sections","sections"],
+          ["📚","Subjects","subjects"],["📝","Grades","grades"],
+          ["📅","Calendar","calendar"],["🗓️","Appts","appointments"],
         ]}
         active={tab} setActive={setTab}/>
     </div>
@@ -1274,24 +1920,24 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
 // ─── MAIN APP ────────────────────────────────────────────
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [session,setSession]=useState(null);
+  const [profile,setProfile]=useState(null);
+  const [loading,setLoading]=useState(true);
 
-  useEffect(() => {
+  useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>setSession(session));
-    const {data:{subscription}} = supabase.auth.onAuthStateChange((_,session)=>setSession(session));
-    return () => subscription.unsubscribe();
-  }, []);
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_,session)=>setSession(session));
+    return ()=>subscription.unsubscribe();
+  },[]);
 
-  useEffect(() => {
-    if (!session) { setProfile(null); setLoading(false); return; }
+  useEffect(()=>{
+    if (!session){setProfile(null);setLoading(false);return;}
     setLoading(true);
     supabase.from("profiles").select("*").eq("id",session.user.id).single()
-      .then(({data})=>{ setProfile(data); setLoading(false); });
-  }, [session]);
+      .then(({data})=>{setProfile(data);setLoading(false);});
+  },[session]);
 
-  const handleLogout = async () => {
+  const handleLogout=async()=>{
     await supabase.auth.signOut();
     setProfile(null);
   };
@@ -1299,15 +1945,11 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
-      {loading
-        ?<Spinner/>
-        :!session||!profile
-          ?<Login/>
-          :profile.role==="student"
-            ?<StudentDashboard profile={profile} onLogout={handleLogout}/>
-            :profile.role==="teacher"
-              ?<TeacherDashboard profile={profile} onLogout={handleLogout}/>
-              :<AdminDashboard profile={profile} onLogout={handleLogout}/>
+      {loading?<Spinner/>
+        :!session||!profile?<Login/>
+        :profile.role==="student"?<StudentDashboard profile={profile} onLogout={handleLogout}/>
+        :profile.role==="teacher"?<TeacherDashboard profile={profile} onLogout={handleLogout}/>
+        :<AdminDashboard profile={profile} onLogout={handleLogout}/>
       }
     </>
   );
