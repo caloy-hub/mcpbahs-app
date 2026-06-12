@@ -694,11 +694,11 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                   </select>
                 </div>
                 <div>
-                  <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Quarter</label>
+                  <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Term</label>
                   <select value={selTerm} onChange={e=>setSelTerm(parseInt(e.target.value))}>
-                    <option value={1}>Quarter 1</option>
-                    <option value={2}>Quarter 2</option>
-                    <option value={3}>Quarter 3</option>
+                    <option value={1}>Term 1</option>
+                    <option value={2}>Term 2</option>
+                    <option value={3}>Term 3</option>
                   </select>
                 </div>
               </div>
@@ -1189,9 +1189,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 </select>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nGrade.term} onChange={e=>setNGrade(p=>({...p,term:e.target.value}))}>
-                    <option value={1}>Quarter 1</option>
-                    <option value={2}>Quarter 2</option>
-                    <option value={3}>Quarter 3</option>
+                    <option value={1}>Term 1</option>
+                    <option value={2}>Term 2</option>
+                    <option value={3}>Term 3</option>
                   </select>
                   <input type="number" min="0" max="100" placeholder="Grade *"
                     value={nGrade.grade} onChange={e=>setNGrade(p=>({...p,grade:e.target.value}))}/>
