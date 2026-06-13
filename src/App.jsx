@@ -1,34 +1,29 @@
 // ============================================================
-//  App.jsx — FINAL COMPLETE VERSION v4
+//  App.jsx — FINAL COMPLETE VERSION v5
 //  Maria Cristina P. Belcar Agricultural High School
 //  School ID: 304342 | S.Y. 2026–2027
 //  Dept. of Education · Region XI · Division of Davao City
 //
-//  Features:
-//  ✅ AGRIANS branding on login screen
-//  ✅ LRN login for students
-//  ✅ Student list grouped by Grade → Section → Gender
-//  ✅ Sections management with Adviser assignment
-//  ✅ Curriculum Head role (add students to their grade)
-//  ✅ Adviser role (My Class + Attendance encoding)
-//  ✅ School Calendar (admin encodes school days per month)
-//  ✅ Monthly attendance by adviser
-//  ✅ Term attendance summary in student dashboard
-//  ✅ Agricultural + DepEd theme
-//  ✅ All Edge Functions (create/delete/reset)
+//  What's new in v5:
+//  ✅ Grade levels expanded to 7–12
+//  ✅ Generic password for all students
+//  ✅ Global student lock/unlock
+//  ✅ Calendar white screen fixed (hooks moved out of map)
+//  ✅ AGRIANS branding on login
 // ============================================================
 
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
 import agriansLogo from "./agrians-logo.png";
 
-// ─── TERM CALENDAR ───────────────────────────────────────
+const GRADE_LEVELS = [7, 8, 9, 10, 11, 12];
+
 const TERM_MONTHS = [
   { month:6,  year:2026, term:1, label:"June 2026" },
   { month:7,  year:2026, term:1, label:"July 2026" },
   { month:8,  year:2026, term:1, label:"August 2026" },
-  { month:9,  year:2026, term:1, label:"Sept 2026" },
-  { month:9,  year:2026, term:2, label:"Sept2026" },
+  { month:9,  year:2026, term:1, label:"Sept 1–15, 2026" },
+  { month:9,  year:2026, term:2, label:"Sept 16–30, 2026" },
   { month:10, year:2026, term:2, label:"October 2026" },
   { month:11, year:2026, term:2, label:"November 2026" },
   { month:12, year:2026, term:2, label:"December 2026" },
@@ -38,7 +33,6 @@ const TERM_MONTHS = [
   { month:4,  year:2027, term:3, label:"April 2027" },
 ];
 
-// ─── THEME ───────────────────────────────────────────────
 const T = {
   bg:"#f0f7ee", bgCard:"#ffffff", bgPanel:"#e8f5e2",
   green1:"#1b4d1f", green2:"#2d6a30", green3:"#3a8c3f",
@@ -63,7 +57,6 @@ const css = `
   @keyframes spin{to{transform:rotate(360deg)}}
 `;
 
-// ─── HELPERS ─────────────────────────────────────────────
 const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
 const remark = g => {
   if (!g) return { r:"N/A", c:T.gray };
@@ -75,20 +68,17 @@ const remark = g => {
 };
 const attendColor = pct => pct>=90?"#2e7d32":pct>=75?T.yellow:T.red;
 
-// ─── EDGE CALL ───────────────────────────────────────────
 const edgeCall = async (fn, body) => {
   const { data:{ session } } = await supabase.auth.getSession();
   const res = await fetch(
     `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`,
     { method:"POST",
-      headers:{"Content-Type":"application/json",
-        "Authorization":`Bearer ${session.access_token}`},
+      headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},
       body:JSON.stringify(body) }
   );
   return res.json();
 };
 
-// ─── UI PRIMITIVES ───────────────────────────────────────
 const Card = ({ children, style={} }) => (
   <div style={{background:T.bgCard,borderRadius:12,padding:16,
     border:"1px solid #c8e6c9",boxShadow:"0 2px 8px #00000010",...style}}>
@@ -97,10 +87,8 @@ const Card = ({ children, style={} }) => (
 );
 const Btn = ({ children, onClick, color=T.green3, style={}, disabled=false }) => (
   <button onClick={onClick} disabled={disabled} style={{
-    background:disabled?"#ccc":color,
-    color:color===T.yellow?"#1b3a1e":T.white,
-    padding:"10px 16px",fontSize:13,
-    boxShadow:disabled?"none":"0 2px 6px #00000020",
+    background:disabled?"#ccc":color,color:color===T.yellow?"#1b3a1e":T.white,
+    padding:"10px 16px",fontSize:13,boxShadow:disabled?"none":"0 2px 6px #00000020",
     ...style,opacity:disabled?.6:1}}>{children}</button>
 );
 const Badge = ({ text, color }) => (
@@ -118,13 +106,11 @@ const Spinner = () => (
   <div style={{display:"flex",alignItems:"center",justifyContent:"center",
     height:"100vh",background:T.bg,flexDirection:"column",gap:16}}>
     <div style={{width:48,height:48,border:"4px solid #c8e6c9",
-      borderTop:`4px solid ${T.green3}`,borderRadius:"50%",
-      animation:"spin 1s linear infinite"}}/>
+      borderTop:`4px solid ${T.green3}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
     <div style={{color:T.textMuted,fontSize:14,fontWeight:600}}>Loading...</div>
   </div>
 );
 
-// ─── SCHOOL HEADER ───────────────────────────────────────
 const SchoolHeader = ({ small=false }) => (
   <div style={{padding:small?"10px 12px":"20px 16px",
     background:"linear-gradient(160deg,#0d2e10 0%,#1b4d1f 30%,#2d6a30 65%,#3a6b20 100%)",
@@ -192,47 +178,27 @@ const SchoolHeader = ({ small=false }) => (
   </div>
 );
 
-// ─── AGRIANS BRANDING ────────────────────────────────────
 const AgriansBranding = () => (
-  <div style={{
-    display:"flex",flexDirection:"column",alignItems:"center",
-    justifyContent:"center",textAlign:"center",
-    padding:"20px 20px 0px 20px",width:"100%",maxWidth:400,
-  }}>
-    {/* Logo */}
-    <div style={{
-      width:110,height:110,borderRadius:"50%",
-      overflow:"hidden",marginBottom:12,
-      boxShadow:"0 4px 20px #00000025",
-      border:`3px solid ${T.yellow}`,
-      background:"transparent",
-      display:"flex",alignItems:"center",justifyContent:"center",
-    }}>
-      <img
-        src={agriansLogo}
-        alt="AGRIANS Logo"
-        style={{
-          width:"100%",height:"100%",objectFit:"cover",
-          mixBlendMode:"multiply",
-          filter:"contrast(1.1) saturate(1.2)",
-        }}
-      />
+  <div style={{display:"flex",flexDirection:"column",alignItems:"center",
+    justifyContent:"center",textAlign:"center",padding:"20px 20px 0px 20px",
+    width:"100%",maxWidth:400}}>
+    <div style={{width:110,height:110,borderRadius:"50%",overflow:"hidden",marginBottom:12,
+      boxShadow:"0 4px 20px #00000025",border:`3px solid ${T.yellow}`,
+      display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <img src={agriansLogo} alt="AGRIANS Logo"
+        style={{width:"100%",height:"100%",objectFit:"cover",
+          mixBlendMode:"multiply",filter:"contrast(1.1) saturate(1.2)"}}/>
     </div>
-    {/* Project Name */}
     <div style={{fontSize:22,fontWeight:900,color:T.green1,letterSpacing:1,marginBottom:2}}>
       Project <span style={{color:T.green3}}>AGRIANS</span>
     </div>
-    {/* Tagline */}
     <div style={{fontSize:13,fontWeight:600,color:T.textMuted,marginBottom:8,fontStyle:"italic"}}>
       No paper. No waiting. Just progress.
     </div>
-    {/* DepEd tricolor divider */}
     <div style={{display:"flex",height:3,borderRadius:4,overflow:"hidden",width:180,marginBottom:8}}>
-      <div style={{flex:1,background:T.blue}}/>
-      <div style={{flex:1,background:T.red}}/>
+      <div style={{flex:1,background:T.blue}}/><div style={{flex:1,background:T.red}}/>
       <div style={{flex:1,background:T.yellow}}/>
     </div>
-    {/* Acronym expansion */}
     <div style={{fontSize:10,color:T.gray,lineHeight:1.9,letterSpacing:.5,marginBottom:4}}>
       <span style={{fontWeight:700,color:T.green3}}>A</span>cademic{" "}
       <span style={{fontWeight:700,color:T.green3}}>G</span>rade{" "}
@@ -272,7 +238,6 @@ const BottomNav = ({ tabs, active, setActive }) => (
   </div>
 );
 
-// ─── RESET PASSWORD MODAL ────────────────────────────────
 const ResetPasswordModal = ({ user, onConfirm, onClose }) => {
   const [newPass,setNewPass]=useState("");
   const [showPass,setShowPass]=useState(false);
@@ -316,7 +281,6 @@ const ResetPasswordModal = ({ user, onConfirm, onClose }) => {
   );
 };
 
-// ─── ADD STUDENT FORM ────────────────────────────────────
 const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
   const [form,setForm]=useState({
     name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
@@ -325,13 +289,11 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
   const availSections=gradeFilter
     ?sections.filter(s=>s.grade_level===parseInt(gradeFilter))
     :sections.filter(s=>s.grade_level===parseInt(form.grade_level));
-
   const submit=()=>{
     onAdd(form);
     setForm({name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
       gender:"Male",birthday:"",address:"",email:"",password:""});
   };
-
   return (
     <Card style={{marginBottom:12}}>
       <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Student</div>
@@ -343,7 +305,7 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
         {!gradeFilter&&(
           <select value={form.grade_level}
             onChange={e=>setForm(p=>({...p,grade_level:e.target.value,section_id:""}))}>
-            {[7,8,9,10].map(g=><option key={g} value={g}>Grade {g}</option>)}
+            {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
           </select>
         )}
         <select value={form.section_id}
@@ -370,85 +332,71 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
   );
 };
 
-// ─── STUDENT LIST GROUPED ────────────────────────────────
-const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign }) => {
-  const grades=[7,8,9,10];
-  return (
-    <div>
-      {grades.map(gl=>{
-        const gradeSections=sections.filter(s=>s.grade_level===gl);
-        const gradeStudents=students.filter(s=>s.grade_level===gl);
-        if (!gradeStudents.length) return null;
-        return (
-          <div key={gl} style={{marginBottom:16}}>
-            <div style={{fontSize:13,fontWeight:800,color:T.white,
-              background:T.green1,padding:"6px 12px",borderRadius:8,marginBottom:8}}>
-              Grade {gl}
-            </div>
-            {gradeSections.map(sec=>{
-              const secStudents=gradeStudents.filter(s=>s.section_id===sec.id);
-              if (!secStudents.length) return null;
-              const males=secStudents.filter(s=>s.gender==="Male");
-              const females=secStudents.filter(s=>s.gender==="Female");
-              const adviser=teachers.find(t=>t.id===sec.adviser_id);
-              return (
-                <div key={sec.id} style={{marginBottom:12}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.green2,
-                    background:"#e8f5e9",padding:"4px 10px",borderRadius:6,
-                    borderLeft:`3px solid ${T.green3}`,marginBottom:6,
-                    display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span>Section: {sec.name}</span>
-                    {adviser&&<span style={{fontSize:10,color:T.textMuted}}>
-                      Adviser: {adviser.name}
-                    </span>}
+const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign }) => (
+  <div>
+    {GRADE_LEVELS.map(gl=>{
+      const gradeSections=sections.filter(s=>s.grade_level===gl);
+      const gradeStudents=students.filter(s=>s.grade_level===gl);
+      if (!gradeStudents.length) return null;
+      return (
+        <div key={gl} style={{marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:800,color:T.white,
+            background:T.green1,padding:"6px 12px",borderRadius:8,marginBottom:8}}>
+            Grade {gl}
+          </div>
+          {gradeSections.map(sec=>{
+            const secStudents=gradeStudents.filter(s=>s.section_id===sec.id);
+            if (!secStudents.length) return null;
+            const males=secStudents.filter(s=>s.gender==="Male");
+            const females=secStudents.filter(s=>s.gender==="Female");
+            const adviser=teachers.find(t=>t.id===sec.adviser_id);
+            return (
+              <div key={sec.id} style={{marginBottom:12}}>
+                <div style={{fontSize:12,fontWeight:700,color:T.green2,background:"#e8f5e9",
+                  padding:"4px 10px",borderRadius:6,borderLeft:`3px solid ${T.green3}`,
+                  marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span>Section: {sec.name}</span>
+                  {adviser&&<span style={{fontSize:10,color:T.textMuted}}>Adviser: {adviser.name}</span>}
+                </div>
+                {males.length>0&&(
+                  <div>
+                    <div style={{fontSize:11,color:T.blue,fontWeight:700,padding:"2px 8px",
+                      marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                      <span>♂</span><span>Male ({males.length})</span>
+                    </div>
+                    {males.map(s=><StudentCard key={s.id} student={s} sections={sections}
+                      showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
                   </div>
-                  {males.length>0&&(
-                    <div>
-                      <div style={{fontSize:11,color:T.blue,fontWeight:700,
-                        padding:"2px 8px",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-                        <span>♂</span><span>Male ({males.length})</span>
-                      </div>
-                      {males.map(s=>
-                        <StudentCard key={s.id} student={s} sections={sections}
-                          showActions={showActions} onDelete={onDelete}
-                          onReset={onReset} onReassign={onReassign}/>
-                      )}
+                )}
+                {females.length>0&&(
+                  <div style={{marginTop:4}}>
+                    <div style={{fontSize:11,color:"#c2185b",fontWeight:700,padding:"2px 8px",
+                      marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                      <span>♀</span><span>Female ({females.length})</span>
                     </div>
-                  )}
-                  {females.length>0&&(
-                    <div style={{marginTop:4}}>
-                      <div style={{fontSize:11,color:"#c2185b",fontWeight:700,
-                        padding:"2px 8px",marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-                        <span>♀</span><span>Female ({females.length})</span>
-                      </div>
-                      {females.map(s=>
-                        <StudentCard key={s.id} student={s} sections={sections}
-                          showActions={showActions} onDelete={onDelete}
-                          onReset={onReset} onReassign={onReassign}/>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {gradeStudents.filter(s=>!s.section_id).length>0&&(
-              <div style={{marginBottom:8}}>
-                <div style={{fontSize:12,color:T.gray,padding:"2px 8px",marginBottom:4}}>
-                  No Section Assigned
-                </div>
-                {gradeStudents.filter(s=>!s.section_id).map(s=>
-                  <StudentCard key={s.id} student={s} sections={sections}
-                    showActions={showActions} onDelete={onDelete}
-                    onReset={onReset} onReassign={onReassign}/>
+                    {females.map(s=><StudentCard key={s.id} student={s} sections={sections}
+                      showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-};
+            );
+          })}
+          {gradeStudents.filter(s=>!s.section_id).length>0&&(
+            <div style={{marginBottom:8}}>
+              <div style={{fontSize:12,color:T.gray,padding:"2px 8px",marginBottom:4}}>
+                No Section Assigned
+              </div>
+              {gradeStudents.filter(s=>!s.section_id).map(s=>
+                <StudentCard key={s.id} student={s} sections={sections}
+                  showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
 
 const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onReassign }) => {
   const [expand,setExpand]=useState(false);
@@ -459,8 +407,7 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
         <div style={{flex:1}} onClick={()=>setExpand(p=>!p)}>
           <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
           <div style={{fontSize:11,color:T.textMuted,display:"flex",gap:8,flexWrap:"wrap"}}>
-            <span>LRN: {s.lrn}</span>
-            <span>Gr.{s.grade_level}</span>
+            <span>LRN: {s.lrn}</span><span>Gr.{s.grade_level}</span>
             {sec&&<span>{sec.name}</span>}
             <Badge text={s.gender} color={s.gender==="Male"?T.blue:"#c2185b"}/>
           </div>
@@ -477,8 +424,7 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
       {expand&&(
         <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #e0f0e0"}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:11}}>
-            {[["Birthday",s.birthday||"—"],["Address",s.address||"—"],
-              ["Email",s.email||"—"]].map(([k,v])=>(
+            {[["Birthday",s.birthday||"—"],["Address",s.address||"—"],["Email",s.email||"—"]].map(([k,v])=>(
               <div key={k}><span style={{color:T.textMuted}}>{k}: </span>
                 <span style={{color:T.text}}>{v}</span></div>
             ))}
@@ -503,6 +449,76 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
   );
 };
 
+// ─── SCHOOL CALENDAR PANEL (fixed — no hooks in map) ────
+const CalendarPanel = ({ calendar, onSave }) => {
+  const [daysMap, setDaysMap] = useState(() => {
+    const m = {};
+    TERM_MONTHS.forEach(tm => {
+      const key = `${tm.month}-${tm.year}-${tm.term}`;
+      m[key] = "";
+    });
+    return m;
+  });
+
+  // Sync calendar data into daysMap when it loads
+  useEffect(() => {
+    if (!calendar.length) return;
+    setDaysMap(prev => {
+      const next = { ...prev };
+      TERM_MONTHS.forEach(tm => {
+        const key = `${tm.month}-${tm.year}-${tm.term}`;
+        const cal = calendar.find(c => c.month===tm.month && c.year===tm.year && c.term===tm.term);
+        if (cal) next[key] = String(cal.school_days);
+      });
+      return next;
+    });
+  }, [calendar]);
+
+  return (
+    <div>
+      <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
+        📅 School Calendar
+      </div>
+      <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
+        Encode the number of school days per month. Adviser attendance is based on these values.
+      </div>
+      {[1,2,3].map(term=>{
+        const termLabel = term===1?"Term 1: June 8 – Sept 15, 2026"
+          :term===2?"Term 2: Sept 16 – Dec 18, 2026"
+          :"Term 3: Jan 4 – Apr 8, 2027";
+        const termMonths = TERM_MONTHS.filter(m=>m.term===term);
+        return (
+          <div key={term} style={{marginBottom:14}}>
+            <div style={{fontSize:12,fontWeight:700,color:T.white,
+              background:term===1?T.green2:term===2?T.blue:"#7b1fa2",
+              padding:"6px 12px",borderRadius:8,marginBottom:8}}>
+              {termLabel}
+            </div>
+            {termMonths.map((m,i)=>{
+              const key = `${m.month}-${m.year}-${m.term}`;
+              return (
+                <Card key={i} style={{marginBottom:6,padding:"10px 14px"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{flex:1,fontSize:13,fontWeight:600,color:T.text}}>{m.label}</div>
+                    <input type="number" min="0" max="31" style={{width:70,textAlign:"center"}}
+                      value={daysMap[key]||""}
+                      onChange={e=>setDaysMap(p=>({...p,[key]:e.target.value}))}
+                      placeholder="Days"/>
+                    <Btn color={T.green3} style={{padding:"6px 10px",fontSize:12}}
+                      onClick={()=>onSave(m.month,m.year,m.term,daysMap[key]||0)}>
+                      💾
+                    </Btn>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // ─── LOGIN ───────────────────────────────────────────────
 const Login = () => {
   const [role,setRole]=useState("student");
@@ -514,53 +530,45 @@ const Login = () => {
   const doLogin=async()=>{
     setErr(""); setLoading(true);
     try {
-      let email=id;
+      // Check if student access is locked
       if (role==="student") {
+        const { data:lockSetting } = await supabase.from("app_settings")
+          .select("value").eq("key","student_access_locked").single();
+        if (lockSetting?.value==="true") {
+          setErr("Student access is currently disabled. Please contact your school.");
+          setLoading(false); return;
+        }
         const {data,error}=await supabase.from("profiles").select("email")
           .eq("lrn",id).eq("role","student").single();
         if (error||!data){setErr("LRN not found.");setLoading(false);return;}
-        email=data.email;
+        const {error:e}=await supabase.auth.signInWithPassword({email:data.email,password:pass});
+        if (e) setErr(e.message);
+      } else {
+        const {error}=await supabase.auth.signInWithPassword({email:id,password:pass});
+        if (error) setErr(error.message);
       }
-      const {error}=await supabase.auth.signInWithPassword({email,password:pass});
-      if (error) setErr(error.message);
     } catch {setErr("Login failed. Please try again.");}
     setLoading(false);
   };
 
   return (
-    <div style={{
-      minHeight:"100vh",
+    <div style={{minHeight:"100vh",
       background:"linear-gradient(160deg,#e8f5e2 0%,#f0f7ee 50%,#e1f0e1 100%)",
-      display:"flex",flexDirection:"column",
-    }}>
-      {/* School header — unchanged */}
+      display:"flex",flexDirection:"column"}}>
       <SchoolHeader/>
-
-      {/* Centered content area */}
-      <div style={{
-        flex:1,
-        display:"flex",
-        flexDirection:"column",
-        alignItems:"center",
-        justifyContent:"center",
-        padding:"20px 20px 40px 20px",
-      }}>
-        {/* AGRIANS Branding — above login card, inside centered area */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",
+        alignItems:"center",justifyContent:"center",padding:"20px 20px 40px 20px"}}>
         <AgriansBranding/>
-
-        {/* Login Card */}
         <Card style={{width:"100%",maxWidth:400,boxShadow:"0 8px 32px #00000015",marginTop:16}}>
           <div style={{textAlign:"center",marginBottom:20}}>
             <div style={{fontSize:22,fontWeight:800,color:T.green1}}>Welcome</div>
             <div style={{fontSize:12,color:T.textMuted}}>School Year 2026–2027</div>
           </div>
-          <div style={{display:"flex",gap:4,marginBottom:18,
-            background:T.bgPanel,borderRadius:8,padding:4}}>
+          <div style={{display:"flex",gap:4,marginBottom:18,background:T.bgPanel,borderRadius:8,padding:4}}>
             {["student","teacher","admin"].map(r=>(
               <button key={r} onClick={()=>setRole(r)} style={{
                 flex:1,padding:"8px 4px",borderRadius:6,fontSize:12,fontWeight:700,
-                background:role===r?T.green3:"transparent",
-                color:role===r?T.white:T.textMuted,
+                background:role===r?T.green3:"transparent",color:role===r?T.white:T.textMuted,
                 border:"none",cursor:"pointer",textTransform:"capitalize"}}>{r}</button>
             ))}
           </div>
@@ -580,8 +588,7 @@ const Login = () => {
             {loading?"Logging in...":"🔐 Login"}
           </Btn>
           <div style={{display:"flex",height:4,borderRadius:4,overflow:"hidden",marginTop:16}}>
-            <div style={{flex:1,background:T.blue}}/>
-            <div style={{flex:1,background:T.red}}/>
+            <div style={{flex:1,background:T.blue}}/><div style={{flex:1,background:T.red}}/>
             <div style={{flex:1,background:T.yellow}}/>
           </div>
         </Card>
@@ -648,8 +655,7 @@ const StudentDashboard = ({ profile, onLogout }) => {
     termMonths.forEach(m=>{
       const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===term);
       const att=attendance.find(a=>a.month===m.month&&a.year===m.year&&a.term===term);
-      totalDays+=(cal?.school_days||0);
-      totalPresent+=(att?.days_present||0);
+      totalDays+=(cal?.school_days||0); totalPresent+=(att?.days_present||0);
     });
     const absent=totalDays-totalPresent;
     const pct=totalDays>0?Math.round((totalPresent/totalDays)*100):0;
@@ -688,10 +694,8 @@ const StudentDashboard = ({ profile, onLogout }) => {
             <Card style={{marginBottom:10}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 {[["Full Name",profile.name],["LRN",profile.lrn],
-                  ["Grade Level","Grade "+profile.grade_level],
-                  ["Section",section?.name||"—"],
-                  ["Gender",profile.gender||"—"],["Birthday",profile.birthday||"—"],
-                ].map(([k,v])=>(
+                  ["Grade Level","Grade "+profile.grade_level],["Section",section?.name||"—"],
+                  ["Gender",profile.gender||"—"],["Birthday",profile.birthday||"—"]].map(([k,v])=>(
                   <div key={k}>
                     <div style={{fontSize:11,color:T.textMuted}}>{k}</div>
                     <div style={{fontSize:13,fontWeight:600,color:T.text}}>{v}</div>
@@ -772,9 +776,7 @@ const StudentDashboard = ({ profile, onLogout }) => {
                 const {totalDays,totalPresent,absent,pct}=getTermAttendance(term);
                 return (
                   <Card key={term} style={{textAlign:"center",padding:10}}>
-                    <div style={{fontSize:11,fontWeight:700,color:T.green1,marginBottom:4}}>
-                      Term {term}
-                    </div>
+                    <div style={{fontSize:11,fontWeight:700,color:T.green1,marginBottom:4}}>Term {term}</div>
                     <div style={{fontSize:22,fontWeight:900,color:attendColor(pct)}}>{pct}%</div>
                     <div style={{fontSize:10,color:T.textMuted}}>{totalPresent}/{totalDays} days</div>
                     <div style={{fontSize:10,color:T.red}}>{absent} absent</div>
@@ -804,9 +806,7 @@ const StudentDashboard = ({ profile, onLogout }) => {
                   {TERM_MONTHS.map((m,i)=>{
                     const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===m.term);
                     const att=attendance.find(a=>a.month===m.month&&a.year===m.year&&a.term===m.term);
-                    const sd=cal?.school_days||0;
-                    const dp=att?.days_present||0;
-                    const ab=sd-dp;
+                    const sd=cal?.school_days||0,dp=att?.days_present||0,ab=sd-dp;
                     const pct=sd>0?Math.round((dp/sd)*100):0;
                     return (
                       <tr key={i} style={{background:i%2===0?T.bgCard:"#f1f8f1",
@@ -936,8 +936,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
       if (stuData) setClassStudents(stuData);
       const stuIds=stuData?.map(s=>s.id)||[];
       if (stuIds.length>0) {
-        const {data:attData}=await supabase.from("attendance").select("*")
-          .in("student_id",stuIds);
+        const {data:attData}=await supabase.from("attendance").select("*").in("student_id",stuIds);
         if (attData) setAttendance(attData);
       }
     }
@@ -972,16 +971,13 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     const upserts=students
       .filter(s=>localGrades[`${s.id}-${selSubject}-${selTerm}`]!==undefined)
       .map(s=>({student_id:s.id,subject_id:selSubject,term:selTerm,
-        grade:parseFloat(localGrades[`${s.id}-${selSubject}-${selTerm}`])||0,
-        encoded_by:profile.id}));
+        grade:parseFloat(localGrades[`${s.id}-${selSubject}-${selTerm}`])||0,encoded_by:profile.id}));
     if (!upserts.length){notify("⚠️ No changes to save.");return;}
-    const {error}=await supabase.from("grades")
-      .upsert(upserts,{onConflict:"student_id,subject_id,term"});
+    const {error}=await supabase.from("grades").upsert(upserts,{onConflict:"student_id,subject_id,term"});
     if (error){notify("❌ "+error.message);return;}
     setLocalGrades({});
     notify("✅ Grades saved and synced!");
-    const {data}=await supabase.from("grades").select("*")
-      .eq("subject_id",selSubject).eq("term",selTerm);
+    const {data}=await supabase.from("grades").select("*").eq("subject_id",selSubject).eq("term",selTerm);
     if (data) setDbGrades(data);
   };
 
@@ -1001,16 +997,13 @@ const TeacherDashboard = ({ profile, onLogout }) => {
       .filter(s=>localAtt[`${s.id}-${month}-${year}-${term}`]!==undefined)
       .map(s=>{
         const dp=parseInt(localAtt[`${s.id}-${month}-${year}-${term}`])||0;
-        return {student_id:s.id,month,year,term,
-          days_present:Math.min(dp,schoolDays),encoded_by:profile.id};
+        return {student_id:s.id,month,year,term,days_present:Math.min(dp,schoolDays),encoded_by:profile.id};
       });
     if (!upserts.length){notify("⚠️ No changes to save.");return;}
     const {error}=await supabase.from("attendance")
       .upsert(upserts,{onConflict:"student_id,month,year,term"});
     if (error){notify("❌ "+error.message);return;}
-    setLocalAtt({});
-    notify("✅ Attendance saved!");
-    fetchData();
+    setLocalAtt({}); notify("✅ Attendance saved!"); fetchData();
   };
 
   const updateApptStatus=async(id,status)=>{
@@ -1028,10 +1021,9 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     setAddingStudent(true);
     const result=await edgeCall("create-user",{
       role:"student",email:form.email,password:form.password,
-      name:form.name,lrn:form.lrn,
-      grade_level:parseInt(profile.assigned_grade_level),
-      section_id:form.section_id||null,
-      gender:form.gender,birthday:form.birthday||null,address:form.address,
+      name:form.name,lrn:form.lrn,grade_level:parseInt(profile.assigned_grade_level),
+      section_id:form.section_id||null,gender:form.gender,birthday:form.birthday||null,
+      address:form.address,
     });
     if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
     notify("✅ Student added!"); setAddingStudent(false); fetchData();
@@ -1067,8 +1059,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 <div>
                   <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Term</label>
                   <select value={selTerm} onChange={e=>setSelTerm(parseInt(e.target.value))}>
-                    <option value={1}>Term 1</option>
-                    <option value={2}>Term 2</option>
+                    <option value={1}>Term 1</option><option value={2}>Term 2</option>
                     <option value={3}>Term 3</option>
                   </select>
                 </div>
@@ -1090,8 +1081,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                       </div>
                       <input type="number" min="0" max="100" style={{width:72,textAlign:"center"}}
                         value={getGradeVal(s.id)}
-                        onChange={e=>setLocalGrades(p=>({
-                          ...p,[`${s.id}-${selSubject}-${selTerm}`]:e.target.value}))}
+                        onChange={e=>setLocalGrades(p=>({...p,[`${s.id}-${selSubject}-${selTerm}`]:e.target.value}))}
                         placeholder="0–100"/>
                     </div>
                   ))
@@ -1099,28 +1089,21 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 <Btn onClick={saveGrades} style={{width:"100%",marginTop:12}}>💾 Save Grades</Btn>
               </Card>
             ):(
-              <Card>
-                <div style={{textAlign:"center",color:T.gray,padding:20}}>
-                  Select a subject to begin encoding.
-                </div>
-              </Card>
+              <Card><div style={{textAlign:"center",color:T.gray,padding:20}}>Select a subject to begin encoding.</div></Card>
             )}
           </div>
         )}
 
         {tab==="myclass"&&mySection&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
-              🏫 My Advisory Class
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>🏫 My Advisory Class</div>
             <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
               {mySection.name} · Grade {mySection.grade_level} · {classStudents.length} students
             </div>
             {classStudents.filter(s=>s.gender==="Male").length>0&&(
               <div style={{marginBottom:12}}>
-                <div style={{fontSize:12,fontWeight:700,color:T.blue,
-                  padding:"4px 10px",background:"#e3f2fd",borderRadius:6,
-                  borderLeft:"3px solid #1976d2",marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:700,color:T.blue,padding:"4px 10px",
+                  background:"#e3f2fd",borderRadius:6,borderLeft:"3px solid #1976d2",marginBottom:6}}>
                   ♂ Male ({classStudents.filter(s=>s.gender==="Male").length})
                 </div>
                 {classStudents.filter(s=>s.gender==="Male").map(s=>(
@@ -1134,9 +1117,8 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             )}
             {classStudents.filter(s=>s.gender==="Female").length>0&&(
               <div>
-                <div style={{fontSize:12,fontWeight:700,color:"#c2185b",
-                  padding:"4px 10px",background:"#fce4ec",borderRadius:6,
-                  borderLeft:"3px solid #c2185b",marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#c2185b",padding:"4px 10px",
+                  background:"#fce4ec",borderRadius:6,borderLeft:"3px solid #c2185b",marginBottom:6}}>
                   ♀ Female ({classStudents.filter(s=>s.gender==="Female").length})
                 </div>
                 {classStudents.filter(s=>s.gender==="Female").map(s=>(
@@ -1149,29 +1131,21 @@ const TeacherDashboard = ({ profile, onLogout }) => {
               </div>
             )}
             {classStudents.length===0&&(
-              <Card><div style={{textAlign:"center",color:T.gray,padding:20}}>
-                No students in this section yet.
-              </div></Card>
+              <Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No students yet.</div></Card>
             )}
           </div>
         )}
 
         {tab==="attendance"&&mySection&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              📆 Encode Attendance
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📆 Encode Attendance</div>
             <Card style={{marginBottom:12}}>
-              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
-                Select Month
-              </label>
+              <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Select Month</label>
               <select value={selAttMonth?`${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`:""}
                 onChange={e=>{
                   if (!e.target.value){setSelAttMonth(null);return;}
                   const [m,y,t]=e.target.value.split("-");
-                  const found=TERM_MONTHS.find(x=>x.month===parseInt(m)&&
-                    x.year===parseInt(y)&&x.term===parseInt(t));
-                  setSelAttMonth(found||null);
+                  setSelAttMonth(TERM_MONTHS.find(x=>x.month===parseInt(m)&&x.year===parseInt(y)&&x.term===parseInt(t))||null);
                 }}>
                 <option value="">-- Select Month --</option>
                 {TERM_MONTHS.map((m,i)=>{
@@ -1185,8 +1159,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
               </select>
             </Card>
             {selAttMonth&&(()=>{
-              const cal=calendar.find(c=>c.month===selAttMonth.month&&
-                c.year===selAttMonth.year&&c.term===selAttMonth.term);
+              const cal=calendar.find(c=>c.month===selAttMonth.month&&c.year===selAttMonth.year&&c.term===selAttMonth.term);
               const schoolDays=cal?.school_days||0;
               return (
                 <Card>
@@ -1207,21 +1180,17 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                           <div style={{fontSize:11,color:T.textMuted}}>{s.gender}</div>
                         </div>
                         <div style={{display:"flex",alignItems:"center",gap:4}}>
-                          <input type="number" min="0" max={schoolDays}
-                            style={{width:60,textAlign:"center"}}
+                          <input type="number" min="0" max={schoolDays} style={{width:60,textAlign:"center"}}
                             value={getAttVal(s.id,selAttMonth.month,selAttMonth.year,selAttMonth.term)}
-                            onChange={e=>setLocalAtt(p=>({
-                              ...p,[`${s.id}-${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`]:
-                                e.target.value}))}
+                            onChange={e=>setLocalAtt(p=>({...p,
+                              [`${s.id}-${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`]:e.target.value}))}
                             placeholder="Days"/>
                           <span style={{fontSize:10,color:T.textMuted}}>/{schoolDays}</span>
                         </div>
                       </div>
                     ))
                   }
-                  <Btn onClick={saveAttendance} style={{width:"100%",marginTop:12}}>
-                    💾 Save Attendance
-                  </Btn>
+                  <Btn onClick={saveAttendance} style={{width:"100%",marginTop:12}}>💾 Save Attendance</Btn>
                 </Card>
               );
             })()}
@@ -1233,19 +1202,14 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
               ➕ Add Students — Grade {profile.assigned_grade_level}
             </div>
-            <AddStudentForm
-              sections={sections}
-              gradeFilter={profile.assigned_grade_level}
-              onAdd={handleAddStudent}
-              loading={addingStudent}/>
+            <AddStudentForm sections={sections} gradeFilter={profile.assigned_grade_level}
+              onAdd={handleAddStudent} loading={addingStudent}/>
           </div>
         )}
 
         {tab==="appointments"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              📅 Appointments
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📅 Appointments</div>
             {appointments.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No appointments.</div></Card>
               :appointments.map(a=>(
@@ -1292,16 +1256,22 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [resetModal,setResetModal]=useState(null);
   const [addingStudent,setAddingStudent]=useState(false);
 
+  // Settings state
+  const [isLocked,setIsLocked]=useState(false);
+  const [genericPass,setGenericPass]=useState("");
+  const [showGenericPass,setShowGenericPass]=useState(false);
+  const [applyingPass,setApplyingPass]=useState(false);
+
   const [nTeacher,setNTeacher]=useState({name:"",email:"",password:""});
   const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:""});
   const [nGrade,setNGrade]=useState({student_id:"",subject_id:"",term:1,grade:""});
   const [nSection,setNSection]=useState({name:"",grade_level:7,adviser_id:""});
 
-  const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
+  const notify=m=>{setToast(m);setTimeout(()=>setToast(""),3000);};
 
   const fetchAll=useCallback(async()=>{
     setLoading(true);
-    const [sR,tR,subR,gR,aR,secR,calR]=await Promise.all([
+    const [sR,tR,subR,gR,aR,secR,calR,settR]=await Promise.all([
       supabase.from("profiles").select("*").eq("role","student").order("grade_level").order("name"),
       supabase.from("profiles").select("*").eq("role","teacher").order("name"),
       supabase.from("subjects").select("*").order("grade_level"),
@@ -1309,6 +1279,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
       supabase.from("appointments").select("*").order("created_at",{ascending:false}),
       supabase.from("sections").select("*").order("grade_level").order("name"),
       supabase.from("school_calendar").select("*").order("year").order("month"),
+      supabase.from("app_settings").select("*"),
     ]);
     if (sR.data) setStudents(sR.data);
     if (tR.data) setTeachers(tR.data);
@@ -1317,11 +1288,47 @@ const AdminDashboard = ({ profile, onLogout }) => {
     if (aR.data) setAppointments(aR.data);
     if (secR.data) setSections(secR.data);
     if (calR.data) setCalendar(calR.data);
+    if (settR.data) {
+      const lockSetting=settR.data.find(s=>s.key==="student_access_locked");
+      if (lockSetting) setIsLocked(lockSetting.value==="true");
+    }
     setLoading(false);
   },[]);
 
   useEffect(()=>{fetchAll();},[fetchAll]);
 
+  // ── SETTINGS ──
+  const toggleLock=async()=>{
+    const newVal=!isLocked;
+    if (!window.confirm(newVal
+      ?"Lock student access? Students will not be able to login."
+      :"Unlock student access? Students will be able to login again.")) return;
+    const {error}=await supabase.from("app_settings")
+      .upsert({key:"student_access_locked",value:String(newVal)},{onConflict:"key"});
+    if (error){notify("❌ "+error.message);return;}
+    setIsLocked(newVal);
+    notify(newVal?"🔒 Student access locked!":"🔓 Student access unlocked!");
+  };
+
+  const applyGenericPassword=async()=>{
+    if (!genericPass||genericPass.length<6){
+      notify("❌ Password must be at least 6 characters."); return;
+    }
+    if (!window.confirm(`Apply "${genericPass}" as the password for ALL ${students.length} students? This cannot be undone.`)) return;
+    setApplyingPass(true);
+    notify("⏳ Applying password to all students...");
+    let success=0,failed=0;
+    for (const student of students) {
+      const result=await edgeCall("reset-password",{userId:student.id,newPassword:genericPass});
+      if (result.error) failed++;
+      else success++;
+    }
+    setApplyingPass(false);
+    setGenericPass("");
+    notify(`✅ Done! ${success} updated${failed>0?`, ${failed} failed`:""}.`);
+  };
+
+  // ── STUDENTS ──
   const handleAddStudent=async form=>{
     if (!form.name||!form.lrn||!form.email||!form.password){
       notify("❌ Name, LRN, email and password required."); return;
@@ -1329,10 +1336,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
     setAddingStudent(true);
     const result=await edgeCall("create-user",{
       role:"student",email:form.email,password:form.password,
-      name:form.name,lrn:form.lrn,
-      grade_level:parseInt(form.grade_level),
-      section_id:form.section_id||null,
-      gender:form.gender,birthday:form.birthday||null,address:form.address,
+      name:form.name,lrn:form.lrn,grade_level:parseInt(form.grade_level),
+      section_id:form.section_id||null,gender:form.gender,
+      birthday:form.birthday||null,address:form.address,
     });
     if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
     notify("✅ Student added!"); setAddingStudent(false); fetchAll();
@@ -1350,20 +1356,17 @@ const AdminDashboard = ({ profile, onLogout }) => {
     const sec=sections.find(s=>s.id===sectionId);
     const stu=students.find(s=>s.id===studentId);
     const gradeLevel=sec?sec.grade_level:stu?.grade_level;
-    await supabase.from("profiles").update({
-      section_id:sectionId||null,grade_level:gradeLevel
-    }).eq("id",studentId);
+    await supabase.from("profiles").update({section_id:sectionId||null,grade_level:gradeLevel}).eq("id",studentId);
     notify("✅ Section reassigned!"); fetchAll();
   };
 
+  // ── TEACHERS ──
   const addTeacher=async()=>{
     if (!nTeacher.name||!nTeacher.email||!nTeacher.password){
       notify("❌ Name, email and password required."); return;
     }
     notify("⏳ Creating teacher...");
-    const result=await edgeCall("create-user",{
-      role:"teacher",email:nTeacher.email,password:nTeacher.password,name:nTeacher.name,
-    });
+    const result=await edgeCall("create-user",{role:"teacher",email:nTeacher.email,password:nTeacher.password,name:nTeacher.name});
     if (result.error){notify("❌ "+result.error);return;}
     setNTeacher({name:"",email:"",password:""});
     notify("✅ Teacher added!"); fetchAll();
@@ -1380,11 +1383,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const toggleCurriculumHead=async(teacher,gl)=>{
     const isHead=teacher.is_curriculum_head&&teacher.assigned_grade_level===parseInt(gl);
     await supabase.from("profiles").update({
-      is_curriculum_head:!isHead,
-      assigned_grade_level:isHead?null:parseInt(gl)
+      is_curriculum_head:!isHead,assigned_grade_level:isHead?null:parseInt(gl)
     }).eq("id",teacher.id);
-    notify(isHead?"✅ Curriculum Head removed!":"✅ Curriculum Head assigned!");
-    fetchAll();
+    notify(isHead?"✅ Removed!":"✅ Curriculum Head assigned!"); fetchAll();
   };
 
   const handleResetPassword=async newPassword=>{
@@ -1396,11 +1397,11 @@ const AdminDashboard = ({ profile, onLogout }) => {
     setResetModal(null);
   };
 
+  // ── SUBJECTS ──
   const addSubject=async()=>{
     if (!nSubject.name){notify("❌ Subject name required.");return;}
     const {error}=await supabase.from("subjects").insert({
-      name:nSubject.name,grade_level:parseInt(nSubject.grade_level),
-      teacher_id:nSubject.teacher_id||null,
+      name:nSubject.name,grade_level:parseInt(nSubject.grade_level),teacher_id:nSubject.teacher_id||null
     });
     if (error){notify("❌ "+error.message);return;}
     setNSubject({name:"",grade_level:7,teacher_id:""});
@@ -1418,11 +1419,11 @@ const AdminDashboard = ({ profile, onLogout }) => {
     notify("✅ Teacher reassigned!"); fetchAll();
   };
 
+  // ── SECTIONS ──
   const addSection=async()=>{
     if (!nSection.name){notify("❌ Section name required.");return;}
     const {error}=await supabase.from("sections").insert({
-      name:nSection.name,grade_level:parseInt(nSection.grade_level),
-      adviser_id:nSection.adviser_id||null,
+      name:nSection.name,grade_level:parseInt(nSection.grade_level),adviser_id:nSection.adviser_id||null
     });
     if (error){notify("❌ "+error.message);return;}
     setNSection({name:"",grade_level:7,adviser_id:""});
@@ -1440,13 +1441,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
     notify("✅ Adviser assigned!"); fetchAll();
   };
 
+  // ── GRADES ──
   const saveGrade=async()=>{
-    if (!nGrade.student_id||!nGrade.subject_id||!nGrade.grade){
-      notify("❌ Fill all fields.");return;
-    }
+    if (!nGrade.student_id||!nGrade.subject_id||!nGrade.grade){notify("❌ Fill all fields.");return;}
     const {error}=await supabase.from("grades").upsert({
       student_id:nGrade.student_id,subject_id:nGrade.subject_id,
-      term:parseInt(nGrade.term),grade:parseFloat(nGrade.grade),encoded_by:profile.id,
+      term:parseInt(nGrade.term),grade:parseFloat(nGrade.grade),encoded_by:profile.id
     },{onConflict:"student_id,subject_id,term"});
     if (error){notify("❌ "+error.message);return;}
     setNGrade({student_id:"",subject_id:"",term:1,grade:""});
@@ -1456,9 +1456,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const saveEditGrade=async()=>{
     const {error}=await supabase.from("grades")
       .update({grade:parseFloat(editGrade.grade)})
-      .eq("student_id",editGrade.student_id)
-      .eq("subject_id",editGrade.subject_id)
-      .eq("term",editGrade.term);
+      .eq("student_id",editGrade.student_id).eq("subject_id",editGrade.subject_id).eq("term",editGrade.term);
     if (error){notify("❌ "+error.message);return;}
     setEditGrade(null); notify("✅ Grade updated!"); fetchAll();
   };
@@ -1471,12 +1469,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
   const saveSchoolDays=async(month,year,term,days)=>{
     const {error}=await supabase.from("school_calendar")
-      .upsert({month,year,term,school_days:parseInt(days)||0},
-        {onConflict:"month,year,term"});
+      .upsert({month,year,term,school_days:parseInt(days)||0},{onConflict:"month,year,term"});
     if (error){notify("❌ "+error.message);return;}
     notify("✅ School days saved!"); fetchAll();
   };
 
+  // ── APPOINTMENTS ──
   const updateApptStatus=async(id,status)=>{
     await supabase.from("appointments").update({status}).eq("id",id);
     notify(`✅ Appointment ${status}.`); fetchAll();
@@ -1506,7 +1504,6 @@ const AdminDashboard = ({ profile, onLogout }) => {
         <ResetPasswordModal user={resetModal}
           onConfirm={handleResetPassword} onClose={()=>setResetModal(null)}/>
       )}
-
       {editGrade&&(
         <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:200,
           display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -1520,9 +1517,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
               onChange={e=>setEditGrade(p=>({...p,grade:e.target.value}))} style={{marginBottom:12}}/>
             <div style={{display:"flex",gap:8}}>
               <Btn onClick={saveEditGrade} style={{flex:1}}>💾 Save</Btn>
-              <Btn onClick={()=>setEditGrade(null)} color="#e0e0e0" style={{flex:1,color:T.text}}>
-                Cancel
-              </Btn>
+              <Btn onClick={()=>setEditGrade(null)} color="#e0e0e0" style={{flex:1,color:T.text}}>Cancel</Btn>
             </div>
           </Card>
         </div>
@@ -1546,8 +1541,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
             </div>
             <Card style={{padding:12}}>
               <div style={{display:"flex",height:8,borderRadius:6,overflow:"hidden",marginBottom:8}}>
-                <div style={{flex:1,background:T.blue}}/>
-                <div style={{flex:1,background:T.red}}/>
+                <div style={{flex:1,background:T.blue}}/><div style={{flex:1,background:T.red}}/>
                 <div style={{flex:1,background:T.yellow}}/>
               </div>
               <div style={{fontSize:12,color:T.textMuted,textAlign:"center",fontWeight:600}}>
@@ -1557,26 +1551,100 @@ const AdminDashboard = ({ profile, onLogout }) => {
           </div>
         )}
 
+        {tab==="settings"&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:12}}>
+              ⚙️ System Settings
+            </div>
+
+            {/* Lock/Unlock */}
+            <Card style={{marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+                🔒 Student Access Control
+              </div>
+              <div style={{fontSize:12,color:T.textMuted,marginBottom:12,lineHeight:1.7}}>
+                When locked, students cannot log in. Teachers and Admin are not affected.
+                Current status:{" "}
+                <strong style={{color:isLocked?T.red:T.green4}}>
+                  {isLocked?"🔒 LOCKED":"🔓 UNLOCKED"}
+                </strong>
+              </div>
+              <Btn
+                onClick={toggleLock}
+                color={isLocked?T.green3:T.red}
+                style={{width:"100%",fontSize:14}}>
+                {isLocked?"🔓 Unlock Student Access":"🔒 Lock Student Access"}
+              </Btn>
+            </Card>
+
+            {/* Generic Password */}
+            <Card>
+              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+                🔑 Set Generic Password for All Students
+              </div>
+              <div style={{fontSize:12,color:T.textMuted,marginBottom:12,lineHeight:1.7}}>
+                This will reset the password of ALL {students.length} students to the same password.
+                Students can use this to log in then change it later.
+              </div>
+              <div style={{position:"relative",marginBottom:8}}>
+                <input
+                  type={showGenericPass?"text":"password"}
+                  value={genericPass}
+                  onChange={e=>setGenericPass(e.target.value)}
+                  placeholder="Enter generic password (min 6 characters)"
+                  style={{paddingRight:44}}/>
+                <button onClick={()=>setShowGenericPass(p=>!p)} style={{
+                  position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",
+                  background:"none",border:"none",cursor:"pointer",fontSize:16,color:T.textMuted}}>
+                  {showGenericPass?"🙈":"👁️"}
+                </button>
+              </div>
+              {/* Strength bar */}
+              {genericPass.length>0&&(()=>{
+                const s=genericPass.length<6?1:genericPass.length<9?2:genericPass.length<12?3:4;
+                const sc=[T.gray,T.red,"#ff9800",T.yellow,T.green4][s];
+                const sl=["","Too short","Weak","Good","Strong"][s];
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+                    {[1,2,3,4].map(i=>(
+                      <div key={i} style={{flex:1,height:4,borderRadius:2,
+                        background:s>=i?sc:"#e0e0e0",transition:"background .2s"}}/>
+                    ))}
+                    <span style={{fontSize:11,color:sc,flexShrink:0}}>{sl}</span>
+                  </div>
+                );
+              })()}
+              <Btn
+                onClick={applyGenericPassword}
+                disabled={applyingPass||genericPass.length<6}
+                color={T.blue}
+                style={{width:"100%",fontSize:13}}>
+                {applyingPass
+                  ?`⏳ Applying to all ${students.length} students...`
+                  :`🔑 Apply to All ${students.length} Students`}
+              </Btn>
+              {applyingPass&&(
+                <div style={{fontSize:11,color:T.textMuted,textAlign:"center",marginTop:8}}>
+                  Please wait. Do not close this page.
+                </div>
+              )}
+            </Card>
+          </div>
+        )}
+
         {tab==="students"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              🎓 Manage Students
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>🎓 Manage Students</div>
             <AddStudentForm sections={sections} onAdd={handleAddStudent} loading={addingStudent}/>
-            <StudentListGrouped
-              students={students} sections={sections} teachers={teachers}
-              showActions={true}
-              onDelete={delStudent}
-              onReset={u=>setResetModal(u)}
-              onReassign={reassignSection}/>
+            <StudentListGrouped students={students} sections={sections} teachers={teachers}
+              showActions={true} onDelete={delStudent}
+              onReset={u=>setResetModal(u)} onReassign={reassignSection}/>
           </div>
         )}
 
         {tab==="teachers"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              👨‍🏫 Manage Teachers
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>👨‍🏫 Manage Teachers</div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Teacher</div>
               <div style={{display:"grid",gap:8,marginBottom:8}}>
@@ -1602,8 +1670,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
                       <Badge text={`Curriculum Head Gr.${t.assigned_grade_level}`} color={T.green2}/>
                     )}
                     {sections.find(s=>s.adviser_id===t.id)&&(
-                      <Badge text={`Adviser: ${sections.find(s=>s.adviser_id===t.id)?.name}`}
-                        color="#7b1fa2"/>
+                      <Badge text={`Adviser: ${sections.find(s=>s.adviser_id===t.id)?.name}`} color="#7b1fa2"/>
                     )}
                   </div>
                   <div style={{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end"}}>
@@ -1616,14 +1683,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #e0f0e0"}}>
                   <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Curriculum Head:</div>
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {[7,8,9,10].map(gl=>(
+                    {GRADE_LEVELS.map(gl=>(
                       <button key={gl} onClick={()=>toggleCurriculumHead(t,gl)} style={{
                         padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:700,
                         border:"none",cursor:"pointer",
-                        background:t.is_curriculum_head&&t.assigned_grade_level===gl
-                          ?T.green3:T.bgPanel,
-                        color:t.is_curriculum_head&&t.assigned_grade_level===gl
-                          ?T.white:T.textMuted}}>
+                        background:t.is_curriculum_head&&t.assigned_grade_level===gl?T.green3:T.bgPanel,
+                        color:t.is_curriculum_head&&t.assigned_grade_level===gl?T.white:T.textMuted}}>
                         Gr.{gl}
                       </button>
                     ))}
@@ -1636,9 +1701,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
         {tab==="sections"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              🏫 Manage Sections
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>🏫 Manage Sections</div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Section</div>
               <div style={{display:"grid",gap:8,marginBottom:8}}>
@@ -1647,7 +1710,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nSection.grade_level}
                     onChange={e=>setNSection(p=>({...p,grade_level:e.target.value}))}>
-                    {[7,8,9,10].map(g=><option key={g} value={g}>Grade {g}</option>)}
+                    {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
                   </select>
                   <select value={nSection.adviser_id}
                     onChange={e=>setNSection(p=>({...p,adviser_id:e.target.value}))}>
@@ -1658,15 +1721,13 @@ const AdminDashboard = ({ profile, onLogout }) => {
               </div>
               <Btn onClick={addSection} style={{width:"100%"}}>➕ Add Section</Btn>
             </Card>
-            {[7,8,9,10].map(gl=>{
+            {GRADE_LEVELS.map(gl=>{
               const glSecs=sections.filter(s=>s.grade_level===gl);
               if (!glSecs.length) return null;
               return (
                 <div key={gl} style={{marginBottom:12}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.white,
-                    background:T.green1,padding:"4px 10px",borderRadius:6,marginBottom:6}}>
-                    Grade {gl}
-                  </div>
+                  <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green1,
+                    padding:"4px 10px",borderRadius:6,marginBottom:6}}>Grade {gl}</div>
                   {glSecs.map(sec=>{
                     const adviser=teachers.find(t=>t.id===sec.adviser_id);
                     const count=students.filter(s=>s.section_id===sec.id).length;
@@ -1701,9 +1762,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
         {tab==="subjects"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              📚 Manage Subjects
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📚 Manage Subjects</div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>➕ Add Subject</div>
               <div style={{display:"grid",gap:8,marginBottom:8}}>
@@ -1712,7 +1771,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nSubject.grade_level}
                     onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value}))}>
-                    {[7,8,9,10].map(g=><option key={g} value={g}>Grade {g}</option>)}
+                    {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
                   </select>
                   <select value={nSubject.teacher_id}
                     onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
@@ -1723,15 +1782,13 @@ const AdminDashboard = ({ profile, onLogout }) => {
               </div>
               <Btn onClick={addSubject} style={{width:"100%"}}>➕ Add Subject</Btn>
             </Card>
-            {[7,8,9,10].map(gl=>{
+            {GRADE_LEVELS.map(gl=>{
               const subs=subjects.filter(s=>s.grade_level===gl);
               if (!subs.length) return null;
               return (
                 <div key={gl} style={{marginBottom:12}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.white,
-                    background:T.green1,padding:"4px 10px",borderRadius:6,marginBottom:6}}>
-                    Grade {gl}
-                  </div>
+                  <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green1,
+                    padding:"4px 10px",borderRadius:6,marginBottom:6}}>Grade {gl}</div>
                   {subs.map(s=>(
                     <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",
@@ -1759,9 +1816,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
         {tab==="grades"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              📝 Manage Grades
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📝 Manage Grades</div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>
                 ➕ Add / Update Grade
@@ -1770,21 +1825,16 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <select value={nGrade.student_id}
                   onChange={e=>setNGrade(p=>({...p,student_id:e.target.value}))}>
                   <option value="">-- Select Student --</option>
-                  {students.map(s=>(
-                    <option key={s.id} value={s.id}>{s.name} (LRN: {s.lrn})</option>
-                  ))}
+                  {students.map(s=><option key={s.id} value={s.id}>{s.name} (LRN: {s.lrn})</option>)}
                 </select>
                 <select value={nGrade.subject_id}
                   onChange={e=>setNGrade(p=>({...p,subject_id:e.target.value}))}>
                   <option value="">-- Select Subject --</option>
-                  {subjects.map(s=>(
-                    <option key={s.id} value={s.id}>{s.name} (Gr.{s.grade_level})</option>
-                  ))}
+                  {subjects.map(s=><option key={s.id} value={s.id}>{s.name} (Gr.{s.grade_level})</option>)}
                 </select>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nGrade.term} onChange={e=>setNGrade(p=>({...p,term:e.target.value}))}>
-                    <option value={1}>Term 1</option>
-                    <option value={2}>Term 2</option>
+                    <option value={1}>Term 1</option><option value={2}>Term 2</option>
                     <option value={3}>Term 3</option>
                   </select>
                   <input type="number" min="0" max="100" placeholder="Grade *"
@@ -1808,9 +1858,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
                         <div style={{fontSize:11,color:T.textMuted}}>{sub.name} · Term {g.term}</div>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:18,fontWeight:900,color:remark(g.grade).c}}>
-                          {g.grade}
-                        </span>
+                        <span style={{fontSize:18,fontWeight:900,color:remark(g.grade).c}}>{g.grade}</span>
                         <Btn color={T.blue} style={{padding:"5px 8px",fontSize:11}}
                           onClick={()=>setEditGrade({...g})}>✏️</Btn>
                         <Btn color={T.red} style={{padding:"5px 8px",fontSize:11}}
@@ -1825,58 +1873,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
         )}
 
         {tab==="calendar"&&(
-          <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
-              📅 School Calendar
-            </div>
-            <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
-              Encode the number of school days per month. Adviser attendance is based on these values.
-            </div>
-            {[1,2,3].map(term=>{
-              const termLabel=term===1?"Term 1: June 8 – Sept 15, 2026"
-                :term===2?"Term 2: Sept 16 – Dec 18, 2026"
-                :"Term 3: Jan 4 – Apr 8, 2027";
-              const termMonths=TERM_MONTHS.filter(m=>m.term===term);
-              return (
-                <div key={term} style={{marginBottom:14}}>
-                  <div style={{fontSize:12,fontWeight:700,color:T.white,
-                    background:term===1?T.green2:term===2?T.blue:"#7b1fa2",
-                    padding:"6px 12px",borderRadius:8,marginBottom:8}}>
-                    {termLabel}
-                  </div>
-                  {termMonths.map((m,i)=>{
-                    const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===m.term);
-                    const [days,setDays]=useState(cal?.school_days||0);
-                    return (
-                      <Card key={i} style={{marginBottom:6,padding:"10px 14px"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          <div style={{flex:1,fontSize:13,fontWeight:600,color:T.text}}>
-                            {m.label}
-                          </div>
-                          <input type="number" min="0" max="31"
-                            style={{width:70,textAlign:"center"}}
-                            defaultValue={cal?.school_days||0}
-                            onChange={e=>setDays(e.target.value)}
-                            placeholder="Days"/>
-                          <Btn color={T.green3} style={{padding:"6px 10px",fontSize:12}}
-                            onClick={()=>saveSchoolDays(m.month,m.year,m.term,days)}>
-                            💾
-                          </Btn>
-                        </div>
-                      </Card>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+          <CalendarPanel calendar={calendar} onSave={saveSchoolDays}/>
         )}
 
         {tab==="appointments"&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              📅 All Appointments
-            </div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📅 All Appointments</div>
             {appointments.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No appointments.</div></Card>
               :appointments.map(a=>(
@@ -1908,10 +1910,11 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
       <BottomNav
         tabs={[
-          ["📊","Overview","overview"],["🎓","Students","students"],
-          ["👨‍🏫","Teachers","teachers"],["🏫","Sections","sections"],
-          ["📚","Subjects","subjects"],["📝","Grades","grades"],
-          ["📅","Calendar","calendar"],["🗓️","Appts","appointments"],
+          ["📊","Overview","overview"],["⚙️","Settings","settings"],
+          ["🎓","Students","students"],["👨‍🏫","Teachers","teachers"],
+          ["🏫","Sections","sections"],["📚","Subjects","subjects"],
+          ["📝","Grades","grades"],["📅","Calendar","calendar"],
+          ["🗓️","Appts","appointments"],
         ]}
         active={tab} setActive={setTab}/>
     </div>
