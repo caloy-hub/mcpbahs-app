@@ -15,6 +15,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "./supabaseClient";
 import agriansLogo from "./agrians-logo.png";
+import mcpbahsLogo from "./mcpbahs-logo.png";
 
 const GRADE_LEVELS = [7, 8, 9, 10, 11, 12];
 
@@ -127,34 +128,8 @@ const SchoolHeader = ({ small=false }) => (
         border:`3px solid ${T.yellow}`,boxShadow:"0 2px 12px #0006",flexShrink:0,
         overflow:"hidden",background:"linear-gradient(160deg,#1b4d1f,#2d6a30)",
         display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <svg width={small?36:52} height={small?36:52} viewBox="0 0 100 100">
-          <circle cx="50" cy="26" r="13" fill="#f5c800"/>
-          <line x1="50" y1="7"  x2="50" y2="2"  stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="50" y1="45" x2="50" y2="50" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="31" y1="26" x2="26" y2="26" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="69" y1="26" x2="74" y2="26" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="37" y1="13" x2="33" y2="9"  stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="63" y1="13" x2="67" y2="9"  stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="37" y1="39" x2="33" y2="43" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="63" y1="39" x2="67" y2="43" stroke="#f5c800" strokeWidth="3" strokeLinecap="round"/>
-          <line x1="25" y1="95" x2="25" y2="55" stroke="#81c784" strokeWidth="2.5" strokeLinecap="round"/>
-          <ellipse cx="25" cy="55" rx="5" ry="8" fill="#4caf50" transform="rotate(-15 25 55)"/>
-          <ellipse cx="21" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(-25 21 63)"/>
-          <ellipse cx="29" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(15 29 63)"/>
-          <ellipse cx="23" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(-20 23 72)"/>
-          <ellipse cx="27" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(10 27 72)"/>
-          <line x1="75" y1="95" x2="75" y2="55" stroke="#81c784" strokeWidth="2.5" strokeLinecap="round"/>
-          <ellipse cx="75" cy="55" rx="5" ry="8" fill="#4caf50" transform="rotate(15 75 55)"/>
-          <ellipse cx="71" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(-15 71 63)"/>
-          <ellipse cx="79" cy="63" rx="4" ry="7" fill="#66bb6a" transform="rotate(25 79 63)"/>
-          <ellipse cx="73" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(-10 73 72)"/>
-          <ellipse cx="77" cy="72" rx="4" ry="7" fill="#81c784" transform="rotate(20 77 72)"/>
-          <line x1="50" y1="95" x2="50" y2="58" stroke="#2d6a30" strokeWidth="3" strokeLinecap="round"/>
-          <ellipse cx="50" cy="54" rx="10" ry="12" fill="#3a8c3f"/>
-          <ellipse cx="50" cy="48" rx="7"  ry="9"  fill="#4caf50"/>
-          <rect x="18" y="88" width="64" height="8" rx="4" fill="#f5c800"/>
-          <rect x="24" y="84" width="52" height="6" rx="3" fill="#e6a800"/>
-        </svg>
+        <img src={mcpbahsLogo} alt="MCPBAHS Logo"
+          style={{width:"100%",height:"100%",objectFit:"cover"}}/>
       </div>
       <div style={{textAlign:"left"}}>
         <div style={{fontSize:small?9:11,color:"#a5d6a7",fontWeight:600,letterSpacing:.5,lineHeight:1.5}}>
@@ -666,6 +641,16 @@ const StudentDashboard = ({ profile, onLogout }) => {
     if (!apptForm.teacherId||!apptForm.date||!apptForm.time||!apptForm.reason){
       setApptMsg("❌ Please fill all fields."); return;
     }
+    // Enforce max 3 appointments per day per teacher (Pending or Approved count toward the limit)
+    const {count,error:countErr}=await supabase.from("appointments")
+      .select("id",{count:"exact",head:true})
+      .eq("teacher_id",apptForm.teacherId).eq("date",apptForm.date)
+      .in("status",["Pending","Approved"]);
+    if (countErr){setApptMsg("❌ "+countErr.message);return;}
+    if ((count||0)>=3){
+      setApptMsg("❌ This teacher already has 3 appointments booked on this date. Please choose another date.");
+      return;
+    }
     const teacher=teachers.find(t=>t.id===apptForm.teacherId);
     const {error}=await supabase.from("appointments").insert({
       student_id:profile.id,student_name:profile.name,
@@ -883,6 +868,11 @@ const StudentDashboard = ({ profile, onLogout }) => {
                   </div>
                   <div style={{fontSize:12,color:T.textMuted}}>📅 {a.date} at {a.time}</div>
                   <div style={{fontSize:12,marginTop:4,color:T.text}}>{a.reason}</div>
+                  {a.booked_by==="adviser"&&(
+                    <div style={{fontSize:10,marginTop:4,color:T.green3,fontWeight:700}}>
+                      🧑‍🏫 Scheduled by your adviser
+                    </div>
+                  )}
                 </Card>
               ))
             }
@@ -915,6 +905,8 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [sections,setSections]=useState([]);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
+  const [advApptForm,setAdvApptForm]=useState({studentId:"",date:"",time:"",reason:""});
+  const [advApptMsg,setAdvApptMsg]=useState("");
 
   const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
@@ -1011,6 +1003,34 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     if (error){notify("❌ "+error.message);return;}
     setAppointments(p=>p.map(a=>a.id===id?{...a,status}:a));
     notify(`✅ Appointment ${status}!`);
+  };
+
+  // Adviser books a parent-teacher conference on behalf of an advisory student.
+  // Counts toward the same 3-appointments-per-day-per-teacher limit.
+  const submitAdvAppt=async()=>{
+    if (!advApptForm.studentId||!advApptForm.date||!advApptForm.time||!advApptForm.reason){
+      setAdvApptMsg("❌ Please fill all fields."); return;
+    }
+    const {count,error:countErr}=await supabase.from("appointments")
+      .select("id",{count:"exact",head:true})
+      .eq("teacher_id",profile.id).eq("date",advApptForm.date)
+      .in("status",["Pending","Approved"]);
+    if (countErr){setAdvApptMsg("❌ "+countErr.message);return;}
+    if ((count||0)>=3){
+      setAdvApptMsg("❌ You already have 3 appointments booked on this date. Please choose another date.");
+      return;
+    }
+    const student=classStudents.find(s=>s.id===advApptForm.studentId);
+    const {error}=await supabase.from("appointments").insert({
+      student_id:advApptForm.studentId,student_name:student?.name||"",
+      teacher_id:profile.id,teacher_name:profile.name,
+      date:advApptForm.date,time:advApptForm.time,reason:advApptForm.reason,
+      status:"Approved",booked_by:"adviser",
+    });
+    if (error){setAdvApptMsg("❌ "+error.message);return;}
+    setAdvApptMsg("✅ Conference scheduled!");
+    setAdvApptForm({studentId:"",date:"",time:"",reason:""});
+    fetchData(); setTimeout(()=>setAdvApptMsg(""),3000);
   };
 
   const [addingStudent,setAddingStudent]=useState(false);
@@ -1210,6 +1230,36 @@ const TeacherDashboard = ({ profile, onLogout }) => {
         {tab==="appointments"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📅 Appointments</div>
+            {mySection&&(
+              <Card style={{marginBottom:12}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>
+                  👨‍👩‍👧 Schedule Parent-Teacher Conference
+                </div>
+                <div style={{fontSize:11,color:T.textMuted,marginBottom:10}}>
+                  As class adviser, you can book a conference directly on behalf of your advisory students (max 3 per day).
+                </div>
+                <div style={{display:"grid",gap:8,marginBottom:8}}>
+                  <select value={advApptForm.studentId}
+                    onChange={e=>setAdvApptForm(p=>({...p,studentId:e.target.value}))}>
+                    <option value="">-- Select Student --</option>
+                    {classStudents.map(s=><option key={s.id} value={s.id}>{s.name} (LRN: {s.lrn})</option>)}
+                  </select>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <input type="date" value={advApptForm.date}
+                      onChange={e=>setAdvApptForm(p=>({...p,date:e.target.value}))}/>
+                    <input type="time" value={advApptForm.time}
+                      onChange={e=>setAdvApptForm(p=>({...p,time:e.target.value}))}/>
+                  </div>
+                  <textarea rows={2} placeholder="Reason / Purpose"
+                    value={advApptForm.reason}
+                    onChange={e=>setAdvApptForm(p=>({...p,reason:e.target.value}))}/>
+                </div>
+                {advApptMsg&&<div style={{fontSize:12,marginBottom:10,padding:"8px 12px",borderRadius:6,
+                  background:advApptMsg.startsWith("✅")?"#e8f5e9":"#ffebee",
+                  color:advApptMsg.startsWith("✅")?T.green2:T.red}}>{advApptMsg}</div>}
+                <Btn onClick={submitAdvAppt} style={{width:"100%"}}>📩 Schedule Conference</Btn>
+              </Card>
+            )}
             {appointments.length===0
               ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No appointments.</div></Card>
               :appointments.map(a=>(
@@ -1221,6 +1271,11 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                   </div>
                   <div style={{fontSize:12,color:T.textMuted}}>📅 {a.date} at {a.time}</div>
                   <div style={{fontSize:12,marginTop:4,color:T.text}}>{a.reason}</div>
+                  {a.booked_by==="adviser"&&(
+                    <div style={{fontSize:10,marginTop:4,color:T.green3,fontWeight:700}}>
+                      🧑‍🏫 Scheduled by adviser
+                    </div>
+                  )}
                   {a.status==="Pending"&&(
                     <div style={{display:"flex",gap:8,marginTop:8}}>
                       <Btn color={T.green3} style={{flex:1,padding:"7px",fontSize:12}}
