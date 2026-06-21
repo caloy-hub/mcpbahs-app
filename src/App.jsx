@@ -256,18 +256,120 @@ const ResetPasswordModal = ({ user, onConfirm, onClose }) => {
   );
 };
 
+const ChangePasswordCard = ({ notify }) => {
+  const [currentPass,setCurrentPass]=useState("");
+  const [newPass,setNewPass]=useState("");
+  const [confirmPass,setConfirmPass]=useState("");
+  const [showPass,setShowPass]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const strength=newPass.length===0?0:newPass.length<6?1:newPass.length<9?2:newPass.length<12?3:4;
+  const sLabel=["","Too short","Weak","Good","Strong"][strength];
+  const sColor=[T.gray,T.red,"#ff9800",T.yellow,T.green4][strength];
+
+  const submit=async()=>{
+    if (newPass.length<6){notify("❌ New password must be at least 6 characters.");return;}
+    if (newPass!==confirmPass){notify("❌ New password and confirmation don't match.");return;}
+    setSaving(true);
+    // Re-authenticate with current password first, to confirm identity before changing it
+    const {data:{user}}=await supabase.auth.getUser();
+    if (!user?.email){notify("❌ Could not verify your account.");setSaving(false);return;}
+    const {error:verifyErr}=await supabase.auth.signInWithPassword({
+      email:user.email,password:currentPass,
+    });
+    if (verifyErr){
+      notify("❌ Current password is incorrect.");
+      setSaving(false);
+      return;
+    }
+    const {error}=await supabase.auth.updateUser({password:newPass});
+    setSaving(false);
+    if (error){notify("❌ "+error.message);return;}
+    notify("✅ Password changed successfully!");
+    setCurrentPass("");setNewPass("");setConfirmPass("");
+  };
+
+  return (
+    <Card>
+      <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>🔒 Change Password</div>
+      <div style={{display:"grid",gap:8,marginBottom:8}}>
+        <input type={showPass?"text":"password"} placeholder="Current Password"
+          value={currentPass} onChange={e=>setCurrentPass(e.target.value)}/>
+        <input type={showPass?"text":"password"} placeholder="New Password (min 6 characters)"
+          value={newPass} onChange={e=>setNewPass(e.target.value)}/>
+        {newPass.length>0&&(
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            {[1,2,3,4].map(i=>(
+              <div key={i} style={{flex:1,height:4,borderRadius:2,
+                background:strength>=i?sColor:"#e0e0e0",transition:"background .2s"}}/>
+            ))}
+            <span style={{fontSize:11,color:sColor,flexShrink:0}}>{sLabel}</span>
+          </div>
+        )}
+        <input type={showPass?"text":"password"} placeholder="Confirm New Password"
+          value={confirmPass} onChange={e=>setConfirmPass(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&submit()}/>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:T.textMuted}}>
+          <input type="checkbox" checked={showPass} onChange={e=>setShowPass(e.target.checked)}/>
+          Show passwords
+        </label>
+      </div>
+      <Btn onClick={submit} disabled={saving||!currentPass||newPass.length<6} style={{width:"100%"}}>
+        {saving?"⏳ Saving...":"🔒 Update Password"}
+      </Btn>
+    </Card>
+  );
+};
+const TVE_QUALIFICATIONS = ["AgriCrop Production", "Animal Production", "Food Processing", "MSES"];
+const GRADE11_TRACKS = ["Academic", "TechPro"];
+const GRADE11_TECHPRO_SUBCHOICES = ["Bakery Operations", "Organic Agriculture Production"];
+const GRADE12_TRACKS = ["TVL-AFA", "TVL-HE"];
+
 const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
   const [form,setForm]=useState({
     name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
-    gender:"Male",birthday:"",address:"",email:"",password:""
+    gender:"Male",birthday:"",address:"",email:"",password:"",
+    tve_qualification:"",grade11_track:"",grade11_techpro_choice:"",grade12_track:""
   });
+  const effectiveGrade=parseInt(gradeFilter||form.grade_level);
+  const needsTve=effectiveGrade>=8&&effectiveGrade<=10; // TVE qualification applies to Grades 8-10 only
+  const isGrade11=effectiveGrade===11;
+  const isGrade12=effectiveGrade===12;
+  const needsTechProChoice=isGrade11&&form.grade11_track==="TechPro";
   const availSections=gradeFilter
     ?sections.filter(s=>s.grade_level===parseInt(gradeFilter))
     :sections.filter(s=>s.grade_level===parseInt(form.grade_level));
+  const resetForm=()=>setForm({name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
+    gender:"Male",birthday:"",address:"",email:"",password:"",
+    tve_qualification:"",grade11_track:"",grade11_techpro_choice:"",grade12_track:""});
   const submit=()=>{
-    onAdd(form);
-    setForm({name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
-      gender:"Male",birthday:"",address:"",email:"",password:""});
+    if (needsTve&&!form.tve_qualification){
+      alert("Please select the student's TVE Qualification."); return;
+    }
+    if (isGrade11&&!form.grade11_track){
+      alert("Please select the student's Grade 11 Track (Academic or TechPro)."); return;
+    }
+    if (needsTechProChoice&&!form.grade11_techpro_choice){
+      alert("Please select the TechPro specialization (Bakery Operations or Organic Agriculture Production)."); return;
+    }
+    if (isGrade12&&!form.grade12_track){
+      alert("Please select the student's Grade 12 Track (TVL-AFA or TVL-HE)."); return;
+    }
+    // Build a single shs_track label for storage, e.g.
+    // "TechPro - Organic Agriculture Production" or "Academic" or "TVL-AFA"
+    let shsTrack=null;
+    if (isGrade11) {
+      shsTrack=form.grade11_track==="TechPro"
+        ?`TechPro - ${form.grade11_techpro_choice}`
+        :"Academic";
+    } else if (isGrade12) {
+      shsTrack=form.grade12_track;
+    }
+    onAdd({
+      ...form,
+      tve_qualification:needsTve?form.tve_qualification:null,
+      shs_track:shsTrack,
+    });
+    resetForm();
   };
   return (
     <Card style={{marginBottom:12}}>
@@ -279,7 +381,8 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
           onChange={e=>setForm(p=>({...p,lrn:e.target.value}))}/>
         {!gradeFilter&&(
           <select value={form.grade_level}
-            onChange={e=>setForm(p=>({...p,grade_level:e.target.value,section_id:""}))}>
+            onChange={e=>setForm(p=>({...p,grade_level:e.target.value,section_id:"",
+              tve_qualification:"",grade11_track:"",grade11_techpro_choice:"",grade12_track:""}))}>
             {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
           </select>
         )}
@@ -297,6 +400,39 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
           onChange={e=>setForm(p=>({...p,email:e.target.value}))}/>
         <input type="password" placeholder="Password *" value={form.password}
           onChange={e=>setForm(p=>({...p,password:e.target.value}))}/>
+        {needsTve&&(
+          <select value={form.tve_qualification}
+            onChange={e=>setForm(p=>({...p,tve_qualification:e.target.value}))}
+            style={{gridColumn:"1 / -1"}}>
+            <option value="">-- TVE Qualification * --</option>
+            {TVE_QUALIFICATIONS.map(q=><option key={q} value={q}>{q}</option>)}
+          </select>
+        )}
+        {isGrade11&&(
+          <>
+            <select value={form.grade11_track}
+              onChange={e=>setForm(p=>({...p,grade11_track:e.target.value,grade11_techpro_choice:""}))}
+              style={{gridColumn:needsTechProChoice?"auto":"1 / -1"}}>
+              <option value="">-- Grade 11 Track * --</option>
+              {GRADE11_TRACKS.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            {needsTechProChoice&&(
+              <select value={form.grade11_techpro_choice}
+                onChange={e=>setForm(p=>({...p,grade11_techpro_choice:e.target.value}))}>
+                <option value="">-- TechPro Specialization * --</option>
+                {GRADE11_TECHPRO_SUBCHOICES.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            )}
+          </>
+        )}
+        {isGrade12&&(
+          <select value={form.grade12_track}
+            onChange={e=>setForm(p=>({...p,grade12_track:e.target.value}))}
+            style={{gridColumn:"1 / -1"}}>
+            <option value="">-- Grade 12 Track * --</option>
+            {GRADE12_TRACKS.map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
       </div>
       <input placeholder="Address" value={form.address}
         onChange={e=>setForm(p=>({...p,address:e.target.value}))} style={{marginBottom:10}}/>
@@ -585,6 +721,8 @@ const StudentDashboard = ({ profile, onLogout }) => {
   const [apptForm,setApptForm]=useState({teacherId:"",date:"",time:"",reason:""});
   const [apptMsg,setApptMsg]=useState("");
   const [loading,setLoading]=useState(true);
+  const [toast,setToast]=useState("");
+  const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
   const fetchData=useCallback(async()=>{
     setLoading(true);
@@ -680,7 +818,10 @@ const StudentDashboard = ({ profile, onLogout }) => {
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 {[["Full Name",profile.name],["LRN",profile.lrn],
                   ["Grade Level","Grade "+profile.grade_level],["Section",section?.name||"—"],
-                  ["Gender",profile.gender||"—"],["Birthday",profile.birthday||"—"]].map(([k,v])=>(
+                  ["Gender",profile.gender||"—"],["Birthday",profile.birthday||"—"],
+                  ...(profile.tve_qualification?[["TVE Qualification",profile.tve_qualification]]:[]),
+                  ...(profile.shs_track?[["Track",profile.shs_track]]:[]),
+                 ].map(([k,v])=>(
                   <div key={k}>
                     <div style={{fontSize:11,color:T.textMuted}}>{k}</div>
                     <div style={{fontSize:13,fontWeight:600,color:T.text}}>{v}</div>
@@ -692,11 +833,12 @@ const StudentDashboard = ({ profile, onLogout }) => {
                 <div style={{fontSize:13,fontWeight:600,color:T.text}}>{profile.address||"—"}</div>
               </div>
             </Card>
-            <Card style={{textAlign:"center"}}>
+            <Card style={{textAlign:"center",marginBottom:10}}>
               <div style={{fontSize:12,color:T.textMuted}}>General Average</div>
               <div style={{fontSize:42,fontWeight:900,color:T.green2}}>{overallAvg||"—"}</div>
               {overallAvg&&<Badge text={remark(overallAvg).r} color={remark(overallAvg).c}/>}
             </Card>
+            <ChangePasswordCard notify={notify}/>
           </div>
         )}
 
@@ -735,7 +877,12 @@ const StudentDashboard = ({ profile, onLogout }) => {
                       <tr key={s.id} style={{background:i%2===0?T.bgCard:"#f1f8f1",
                         borderBottom:"1px solid #e0f0e0"}}>
                         <td style={{padding:"8px"}}>
-                          <div style={{fontWeight:600,color:T.text}}>{s.name}</div>
+                          <div style={{fontWeight:600,color:T.text}}>
+                            {s.name}
+                            {s.name==="TVE"&&profile.tve_qualification&&(
+                              <span style={{fontWeight:400,color:T.textMuted}}> ({profile.tve_qualification})</span>
+                            )}
+                          </div>
                           <div style={{fontSize:10,color:T.textMuted}}>{teacher?.name||"Unassigned"}</div>
                         </td>
                         {[1,2,3].map(t=>{
@@ -882,6 +1029,7 @@ const StudentDashboard = ({ profile, onLogout }) => {
       <BottomNav
         tabs={[["👤","Profile","profile"],["📊","Grades","grades"],["📅","Appt","appointment"]]}
         active={tab} setActive={setTab}/>
+      <Toast msg={toast}/>
     </div>
   );
 };
@@ -907,6 +1055,12 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [loading,setLoading]=useState(true);
   const [advApptForm,setAdvApptForm]=useState({studentId:"",date:"",time:"",reason:""});
   const [advApptMsg,setAdvApptMsg]=useState("");
+  const [honorsThreshold,setHonorsThreshold]=useState(90);
+  const [honorsScope,setHonorsScope]=useState("section"); // "section" | "grade"
+  const [classGrades,setClassGrades]=useState([]); // all grades for students in scope
+  const [gradeLevelStudents,setGradeLevelStudents]=useState([]); // whole grade level (for "grade" scope)
+  const [allGradeSubjects,setAllGradeSubjects]=useState([]);
+  const [summaryTerm,setSummaryTerm]=useState(1); // 1, 2, 3, or "final" — for My Class grade summary
 
   const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
@@ -938,6 +1092,72 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   },[profile.id]);
 
   useEffect(()=>{fetchData();},[fetchData]);
+
+  // Fetch data needed for the Honors tab and Grade Summary (My Class) —
+  // both need class-wide grades, so share one fetch.
+  useEffect(()=>{
+    if ((tab!=="honors"&&tab!=="myclass")||!mySection) return;
+    (async()=>{
+      let studentsInScope=classStudents;
+      if (tab==="honors"&&honorsScope==="grade") {
+        const {data}=await supabase.from("profiles").select("*")
+          .eq("role","student").eq("grade_level",mySection.grade_level).order("name");
+        if (data) { setGradeLevelStudents(data); studentsInScope=data; }
+      }
+      const ids=studentsInScope.map(s=>s.id);
+      if (ids.length===0) return;
+      const [gR,subR]=await Promise.all([
+        supabase.from("grades").select("*").in("student_id",ids),
+        supabase.from("subjects").select("*").eq("grade_level",mySection.grade_level),
+      ]);
+      if (gR.data) setClassGrades(gR.data);
+      if (subR.data) setAllGradeSubjects(subR.data);
+    })();
+  },[tab,mySection,honorsScope,classStudents]);
+
+  // Compute each student's per-term and final general average from classGrades
+  const computeHonorsRoll=()=>{
+    const studentsInScope=honorsScope==="grade"?gradeLevelStudents:classStudents;
+    const subjectIds=allGradeSubjects.map(s=>s.id);
+    return studentsInScope.map(stu=>{
+      const myGrades=classGrades.filter(g=>g.student_id===stu.id&&subjectIds.includes(g.subject_id));
+      const termAvgs=[1,2,3].map(term=>{
+        const termGrades=myGrades.filter(g=>g.term===term).map(g=>g.grade);
+        if (termGrades.length===0) return null;
+        return Math.round((termGrades.reduce((a,b)=>a+b,0)/termGrades.length)*100)/100;
+      });
+      const validTermAvgs=termAvgs.filter(a=>a!==null);
+      const finalAvg=validTermAvgs.length>0
+        ?Math.round((validTermAvgs.reduce((a,b)=>a+b,0)/validTermAvgs.length)*100)/100
+        :null;
+      return {student:stu,termAvgs,finalAvg};
+    });
+  };
+
+  // Per-subject grade summary table for My Class — students × subjects for a given term
+  // (or "final" = average across all 3 terms per subject).
+  const computeGradeSummary=(term)=>{
+    return classStudents.map(stu=>{
+      const myGrades=classGrades.filter(g=>g.student_id===stu.id);
+      const bySubject={};
+      allGradeSubjects.forEach(sub=>{
+        if (term==="final") {
+          const subGrades=myGrades.filter(g=>g.subject_id===sub.id).map(g=>g.grade);
+          bySubject[sub.id]=subGrades.length>0
+            ?Math.round((subGrades.reduce((a,b)=>a+b,0)/subGrades.length)*100)/100
+            :null;
+        } else {
+          const g=myGrades.find(g=>g.subject_id===sub.id&&g.term===term);
+          bySubject[sub.id]=g?g.grade:null;
+        }
+      });
+      const values=Object.values(bySubject).filter(v=>v!==null);
+      const average=values.length>0
+        ?Math.round((values.reduce((a,b)=>a+b,0)/values.length)*100)/100
+        :null;
+      return {student:stu,bySubject,average};
+    });
+  };
 
   useEffect(()=>{
     if (!selSubject) return;
@@ -1038,19 +1258,69 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     if (!form.name||!form.lrn||!form.email||!form.password){
       notify("❌ Name, LRN, email and password required."); return;
     }
+    const gradeLevel=parseInt(profile.assigned_grade_level);
+    if (gradeLevel>=8&&gradeLevel<=10&&!form.tve_qualification){
+      notify("❌ TVE Qualification is required for Grades 8-10."); return;
+    }
+    if ((gradeLevel===11||gradeLevel===12)&&!form.shs_track){
+      notify("❌ Track is required for Grades 11-12."); return;
+    }
     setAddingStudent(true);
     const result=await edgeCall("create-user",{
       role:"student",email:form.email,password:form.password,
-      name:form.name,lrn:form.lrn,grade_level:parseInt(profile.assigned_grade_level),
+      name:form.name,lrn:form.lrn,grade_level:gradeLevel,
       section_id:form.section_id||null,gender:form.gender,birthday:form.birthday||null,
       address:form.address,
+      tve_qualification:(gradeLevel>=8&&gradeLevel<=10)?form.tve_qualification:null,
+      shs_track:(gradeLevel===11||gradeLevel===12)?form.shs_track:null,
     });
     if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
     notify("✅ Student added!"); setAddingStudent(false); fetchData();
   };
 
+  const generateCertificate=async(student,periodLabel,average)=>{
+    const day=prompt("Enter the day of the month for this certificate (e.g. 15):");
+    if (!day) return;
+    const month=prompt("Enter the month (e.g. December):");
+    if (!month) return;
+
+    notify("⏳ Generating certificate...");
+    // Certificate's TERM line: "Term 1" -> "TERM 1", "Final / Year-End" -> "FINAL AVERAGE"
+    const termText=periodLabel.startsWith("Term")
+      ?periodLabel.toUpperCase()
+      :"FINAL AVERAGE";
+    const {data:sessionData}=await supabase.auth.getSession();
+    const token=sessionData?.session?.access_token;
+    try {
+      const res=await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-certificate`,
+        {method:"POST",
+         headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+         body:JSON.stringify({
+           student_id:student.id,period_label:termText,
+           average,honor_title:"ACADEMIC EXCELLENCE AWARD",
+           school_year:"2026-2027",day,month,
+         })}
+      );
+      if (!res.ok) {
+        const err=await res.json().catch(()=>({error:"Failed to generate certificate"}));
+        notify("❌ "+(err.error||"Failed to generate certificate"));
+        return;
+      }
+      const blob=await res.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`Certificate_${student.name.replace(/\s+/g,"_")}_${periodLabel.replace(/\s+/g,"_")}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify("✅ Certificate downloaded!");
+    } catch (e) {
+      notify("❌ "+String(e.message||e));
+    }
+  };
+
   const tabs=[["✏️","Encode","encode"],["📅","Appts","appointments"]];
-  if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"]);
+  if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"],["🏆","Honors","honors"]);
   if (profile.is_curriculum_head) tabs.push(["➕","Students","addstudents"]);
 
   if (loading) return <Spinner/>;
@@ -1120,6 +1390,64 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
               {mySection.name} · Grade {mySection.grade_level} · {classStudents.length} students
             </div>
+
+            <Card style={{marginBottom:14}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.green2}}>📊 Grade Summary</div>
+                <select value={summaryTerm} onChange={e=>{
+                  const v=e.target.value;
+                  setSummaryTerm(v==="final"?"final":parseInt(v));
+                }} style={{fontSize:12,padding:"4px 8px"}}>
+                  <option value={1}>Term 1</option>
+                  <option value={2}>Term 2</option>
+                  <option value={3}>Term 3</option>
+                  <option value="final">Final Average</option>
+                </select>
+              </div>
+              {allGradeSubjects.length===0||classStudents.length===0
+                ?<div style={{fontSize:12,color:T.gray,textAlign:"center",padding:14}}>
+                    No subjects or students to summarize yet.
+                  </div>
+                :(
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead>
+                      <tr style={{background:T.green4+"22"}}>
+                        <th style={{padding:"6px 8px",textAlign:"left",position:"sticky",left:0,
+                          background:"#fff",borderBottom:"2px solid "+T.green3}}>Student</th>
+                        {allGradeSubjects.map(sub=>(
+                          <th key={sub.id} style={{padding:"6px 6px",textAlign:"center",
+                            borderBottom:"2px solid "+T.green3,whiteSpace:"nowrap",fontWeight:600}}>
+                            {sub.name}
+                          </th>
+                        ))}
+                        <th style={{padding:"6px 8px",textAlign:"center",
+                          borderBottom:"2px solid "+T.green3,fontWeight:700}}>Average</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {computeGradeSummary(summaryTerm).map(({student,bySubject,average})=>(
+                        <tr key={student.id} style={{borderBottom:"1px solid #f0f0f0"}}>
+                          <td style={{padding:"6px 8px",fontWeight:600,position:"sticky",left:0,
+                            background:"#fff",whiteSpace:"nowrap"}}>{student.name}</td>
+                          {allGradeSubjects.map(sub=>(
+                            <td key={sub.id} style={{padding:"6px 6px",textAlign:"center",
+                              color:bySubject[sub.id]===null?T.gray:T.text}}>
+                              {bySubject[sub.id]??"—"}
+                            </td>
+                          ))}
+                          <td style={{padding:"6px 8px",textAlign:"center",fontWeight:700,
+                            color:average>=90?T.green3:T.text}}>
+                            {average??"—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
             {classStudents.filter(s=>s.gender==="Male").length>0&&(
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:12,fontWeight:700,color:T.blue,padding:"4px 10px",
@@ -1289,6 +1617,73 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
+        {tab==="honors"&&mySection&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
+              🏆 Honors List
+            </div>
+            <Card style={{marginBottom:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div>
+                  <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Honor Threshold</div>
+                  <input type="number" min={75} max={100} value={honorsThreshold}
+                    onChange={e=>setHonorsThreshold(parseFloat(e.target.value)||90)}/>
+                </div>
+                <div>
+                  <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Scope</div>
+                  <select value={honorsScope} onChange={e=>setHonorsScope(e.target.value)}>
+                    <option value="section">My Section ({mySection.name})</option>
+                    <option value="grade">Whole Grade {mySection.grade_level}</option>
+                  </select>
+                </div>
+              </div>
+              <div style={{fontSize:10,color:T.textMuted,marginTop:8}}>
+                Students with a general average ≥ {honorsThreshold} qualify. Final cutoffs for S.Y. 2026–2027
+                are pending official DepEd confirmation — adjust the threshold above as needed once announced.
+              </div>
+            </Card>
+
+            {["Term 1","Term 2","Term 3","Final / Year-End"].map((label,idx)=>{
+              const roll=computeHonorsRoll();
+              const qualifiers=roll.filter(r=>{
+                const avg=idx<3?r.termAvgs[idx]:r.finalAvg;
+                return avg!==null&&avg>=honorsThreshold;
+              }).sort((a,b)=>{
+                const avgA=idx<3?a.termAvgs[idx]:a.finalAvg;
+                const avgB=idx<3?b.termAvgs[idx]:b.finalAvg;
+                return avgB-avgA;
+              });
+              return (
+                <Card key={label} style={{marginBottom:10}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:8}}>
+                    {label} {idx===3&&"🎓"}
+                  </div>
+                  {qualifiers.length===0
+                    ?<div style={{fontSize:12,color:T.gray,textAlign:"center",padding:10}}>
+                        No qualifiers yet.
+                      </div>
+                    :qualifiers.map(({student,termAvgs,finalAvg})=>{
+                      const avg=idx<3?termAvgs[idx]:finalAvg;
+                      return (
+                        <div key={student.id} style={{display:"flex",justifyContent:"space-between",
+                          alignItems:"center",padding:"6px 0",borderBottom:"1px solid #f0f0f0"}}>
+                          <div style={{fontSize:12,fontWeight:600,color:T.text}}>{student.name}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <Badge text={String(avg)} color={T.green3}/>
+                            <Btn color={T.yellow} style={{padding:"4px 8px",fontSize:10}}
+                              onClick={()=>generateCertificate(student,label,avg)}>
+                              🏅 Certificate
+                            </Btn>
+                          </div>
+                        </div>
+                      );
+                    })
+                  }
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
       <BottomNav tabs={tabs} active={tab} setActive={setTab}/>
     </div>
@@ -1388,12 +1783,21 @@ const AdminDashboard = ({ profile, onLogout }) => {
     if (!form.name||!form.lrn||!form.email||!form.password){
       notify("❌ Name, LRN, email and password required."); return;
     }
+    const gradeLevel=parseInt(form.grade_level);
+    if (gradeLevel>=8&&gradeLevel<=10&&!form.tve_qualification){
+      notify("❌ TVE Qualification is required for Grades 8-10."); return;
+    }
+    if ((gradeLevel===11||gradeLevel===12)&&!form.shs_track){
+      notify("❌ Track is required for Grades 11-12."); return;
+    }
     setAddingStudent(true);
     const result=await edgeCall("create-user",{
       role:"student",email:form.email,password:form.password,
-      name:form.name,lrn:form.lrn,grade_level:parseInt(form.grade_level),
+      name:form.name,lrn:form.lrn,grade_level:gradeLevel,
       section_id:form.section_id||null,gender:form.gender,
       birthday:form.birthday||null,address:form.address,
+      tve_qualification:(gradeLevel>=8&&gradeLevel<=10)?form.tve_qualification:null,
+      shs_track:(gradeLevel===11||gradeLevel===12)?form.shs_track:null,
     });
     if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
     notify("✅ Student added!"); setAddingStudent(false); fetchAll();
