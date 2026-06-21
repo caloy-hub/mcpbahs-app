@@ -70,14 +70,23 @@ const remark = g => {
 const attendColor = pct => pct>=90?"#2e7d32":pct>=75?T.yellow:T.red;
 
 const edgeCall = async (fn, body) => {
-  const { data:{ session } } = await supabase.auth.getSession();
-  const res = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`,
-    { method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},
-      body:JSON.stringify(body) }
-  );
-  return res.json();
+  try {
+    const { data:{ session } } = await supabase.auth.getSession();
+    if (!session) return { error: "Your session has expired. Please log in again." };
+    const res = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fn}`,
+      { method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},
+        body:JSON.stringify(body) }
+    );
+    let json;
+    try { json = await res.json(); }
+    catch { return { error: `Server returned an invalid response (status ${res.status}).` }; }
+    if (!res.ok && !json.error) return { error: json.message || `Request failed (status ${res.status}).` };
+    return json;
+  } catch (err) {
+    return { error: err.message || "Network error — please check your connection and try again." };
+  }
 };
 
 const Card = ({ children, style={} }) => (
@@ -319,12 +328,16 @@ const ChangePasswordCard = ({ notify }) => {
     </Card>
   );
 };
-const TVE_QUALIFICATIONS = ["AgriCrop Production", "Animal Production", "Food Processing", "MSES"];
+// TVE qualifications are now admin-managed (table `tve_qualifications`) instead
+// of hardcoded, so admin can rename/add/remove them — see AdminDashboard Settings tab.
+// This fallback list is only used if that table hasn't loaded yet / is empty.
+const TVE_QUALIFICATIONS_FALLBACK = ["AgriCrop Production", "Animal Production", "Food Processing", "MSES"];
 const GRADE11_TRACKS = ["Academic", "TechPro"];
 const GRADE11_TECHPRO_SUBCHOICES = ["Bakery Operations", "Organic Agriculture Production"];
 const GRADE12_TRACKS = ["TVL-AFA", "TVL-HE"];
 
-const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
+const AddStudentForm = ({ sections, gradeFilter, onAdd, loading, qualifications }) => {
+  const tveOptions=(qualifications&&qualifications.length>0)?qualifications:TVE_QUALIFICATIONS_FALLBACK;
   const [form,setForm]=useState({
     name:"",lrn:"",grade_level:gradeFilter||7,section_id:"",
     gender:"Male",birthday:"",address:"",email:"",password:"",
@@ -405,7 +418,7 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
             onChange={e=>setForm(p=>({...p,tve_qualification:e.target.value}))}
             style={{gridColumn:"1 / -1"}}>
             <option value="">-- TVE Qualification * --</option>
-            {TVE_QUALIFICATIONS.map(q=><option key={q} value={q}>{q}</option>)}
+            {tveOptions.map(q=><option key={q} value={q}>{q}</option>)}
           </select>
         )}
         {isGrade11&&(
@@ -443,12 +456,13 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading }) => {
   );
 };
 
-const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign }) => (
+const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign, qualifications=[] }) => (
   <div>
     {GRADE_LEVELS.map(gl=>{
       const gradeSections=sections.filter(s=>s.grade_level===gl);
       const gradeStudents=students.filter(s=>s.grade_level===gl);
       if (!gradeStudents.length) return null;
+      const isTveGrade=gl>=8&&gl<=10; // TVE qualification only applies to Grades 8-10
       return (
         <div key={gl} style={{marginBottom:16}}>
           <div style={{fontSize:13,fontWeight:800,color:T.white,
@@ -458,9 +472,53 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
           {gradeSections.map(sec=>{
             const secStudents=gradeStudents.filter(s=>s.section_id===sec.id);
             if (!secStudents.length) return null;
-            const males=secStudents.filter(s=>s.gender==="Male");
-            const females=secStudents.filter(s=>s.gender==="Female");
             const adviser=teachers.find(t=>t.id===sec.adviser_id);
+
+            // Renders the Male / Female sub-groups for a given list of students.
+            const renderGenderGroups=list=>{
+              const males=list.filter(s=>s.gender==="Male");
+              const females=list.filter(s=>s.gender==="Female");
+              return (
+                <>
+                  {males.length>0&&(
+                    <div>
+                      <div style={{fontSize:11,color:T.blue,fontWeight:700,padding:"2px 8px",
+                        marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                        <span>♂</span><span>Male ({males.length})</span>
+                      </div>
+                      {males.map(s=><StudentCard key={s.id} student={s} sections={sections}
+                        showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
+                    </div>
+                  )}
+                  {females.length>0&&(
+                    <div style={{marginTop:4}}>
+                      <div style={{fontSize:11,color:"#c2185b",fontWeight:700,padding:"2px 8px",
+                        marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+                        <span>♀</span><span>Female ({females.length})</span>
+                      </div>
+                      {females.map(s=><StudentCard key={s.id} student={s} sections={sections}
+                        showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
+                    </div>
+                  )}
+                </>
+              );
+            };
+
+            // For Grades 8-10, break the section's students down per TVE qualification
+            // (per admin-managed list), so admin can see exactly who belongs to which
+            // qualification within this section. Other grades show gender groups directly.
+            const qualGroups=isTveGrade
+              ?[...qualifications,
+                ...(secStudents.some(s=>!s.tve_qualification||!qualifications.includes(s.tve_qualification))
+                  ?["Unassigned / Other"]:[])
+                ].map(qName=>({
+                  name:qName,
+                  list:qName==="Unassigned / Other"
+                    ?secStudents.filter(s=>!s.tve_qualification||!qualifications.includes(s.tve_qualification))
+                    :secStudents.filter(s=>s.tve_qualification===qName),
+                })).filter(g=>g.list.length>0)
+              :null;
+
             return (
               <div key={sec.id} style={{marginBottom:12}}>
                 <div style={{fontSize:12,fontWeight:700,color:T.green2,background:"#e8f5e9",
@@ -469,26 +527,18 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
                   <span>Section: {sec.name}</span>
                   {adviser&&<span style={{fontSize:10,color:T.textMuted}}>Adviser: {adviser.name}</span>}
                 </div>
-                {males.length>0&&(
-                  <div>
-                    <div style={{fontSize:11,color:T.blue,fontWeight:700,padding:"2px 8px",
-                      marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-                      <span>♂</span><span>Male ({males.length})</span>
+                {qualGroups?(
+                  qualGroups.map(g=>(
+                    <div key={g.name} style={{marginBottom:10,marginLeft:4,paddingLeft:8,
+                      borderLeft:"2px solid #d4e8d4"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#7b1fa2",background:"#f3e5f5",
+                        padding:"3px 9px",borderRadius:6,marginBottom:6,display:"inline-block"}}>
+                        🎯 {g.name} ({g.list.length})
+                      </div>
+                      {renderGenderGroups(g.list)}
                     </div>
-                    {males.map(s=><StudentCard key={s.id} student={s} sections={sections}
-                      showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
-                  </div>
-                )}
-                {females.length>0&&(
-                  <div style={{marginTop:4}}>
-                    <div style={{fontSize:11,color:"#c2185b",fontWeight:700,padding:"2px 8px",
-                      marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-                      <span>♀</span><span>Female ({females.length})</span>
-                    </div>
-                    {females.map(s=><StudentCard key={s.id} student={s} sections={sections}
-                      showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
-                  </div>
-                )}
+                  ))
+                ):renderGenderGroups(secStudents)}
               </div>
             );
           })}
@@ -521,6 +571,7 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
             <span>LRN: {s.lrn}</span><span>Gr.{s.grade_level}</span>
             {sec&&<span>{sec.name}</span>}
             <Badge text={s.gender} color={s.gender==="Male"?T.blue:"#c2185b"}/>
+            {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
           </div>
         </div>
         {showActions&&(
@@ -737,7 +788,12 @@ const StudentDashboard = ({ profile, onLogout }) => {
         ?supabase.from("sections").select("*").eq("id",profile.section_id).single()
         :{data:null},
     ]);
-    if (sR.data) setSubjects(sR.data);
+    if (sR.data) {
+      // A student should only see TVE subjects matching their own qualification.
+      // Non-TVE subjects (tve_qualification is null) are always visible.
+      setSubjects(sR.data.filter(s=>
+        !s.tve_qualification||s.tve_qualification===profile.tve_qualification));
+    }
     if (gR.data) setGrades(gR.data);
     if (tR.data) setTeachers(tR.data);
     if (aR.data) setAppointments(aR.data);
@@ -745,7 +801,7 @@ const StudentDashboard = ({ profile, onLogout }) => {
     if (calR.data) setCalendar(calR.data);
     if (secR.data) setSection(secR.data);
     setLoading(false);
-  },[profile.id,profile.grade_level,profile.section_id]);
+  },[profile.id,profile.grade_level,profile.section_id,profile.tve_qualification]);
 
   useEffect(()=>{
     fetchData();
@@ -879,8 +935,8 @@ const StudentDashboard = ({ profile, onLogout }) => {
                         <td style={{padding:"8px"}}>
                           <div style={{fontWeight:600,color:T.text}}>
                             {s.name}
-                            {s.name==="TVE"&&profile.tve_qualification&&(
-                              <span style={{fontWeight:400,color:T.textMuted}}> ({profile.tve_qualification})</span>
+                            {s.tve_qualification&&(
+                              <span style={{fontWeight:400,color:T.textMuted}}> ({s.tve_qualification})</span>
                             )}
                           </div>
                           <div style={{fontSize:10,color:T.textMuted}}>{teacher?.name||"Unassigned"}</div>
@@ -1061,20 +1117,23 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [gradeLevelStudents,setGradeLevelStudents]=useState([]); // whole grade level (for "grade" scope)
   const [allGradeSubjects,setAllGradeSubjects]=useState([]);
   const [summaryTerm,setSummaryTerm]=useState(1); // 1, 2, 3, or "final" — for My Class grade summary
+  const [qualifications,setQualifications]=useState([]); // admin-managed TVE qualification names
 
   const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
   const fetchData=useCallback(async()=>{
     setLoading(true);
-    const [sR,aR,calR,secR]=await Promise.all([
+    const [sR,aR,calR,secR,qR]=await Promise.all([
       supabase.from("subjects").select("*").eq("teacher_id",profile.id),
       supabase.from("appointments").select("*").eq("teacher_id",profile.id),
       supabase.from("school_calendar").select("*").order("year").order("month"),
       supabase.from("sections").select("*").eq("adviser_id",profile.id).single(),
+      supabase.from("tve_qualifications").select("*").order("name"),
     ]);
     if (sR.data) setSubjects(sR.data);
     if (aR.data) setAppointments(aR.data);
     if (calR.data) setCalendar(calR.data);
+    if (qR.data) setQualifications(qR.data.map(q=>q.name));
     if (secR.data) {
       setMySection(secR.data);
       const {data:stuData}=await supabase.from("profiles").select("*")
@@ -1164,8 +1223,13 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     const sub=subjects.find(s=>s.id===selSubject);
     if (!sub) return;
     (async()=>{
+      // If this subject is tagged with a TVE qualification, only show students
+      // who are assigned that exact qualification — not the whole grade/class.
+      let stuQuery=supabase.from("profiles").select("*")
+        .eq("role","student").eq("grade_level",sub.grade_level);
+      if (sub.tve_qualification) stuQuery=stuQuery.eq("tve_qualification",sub.tve_qualification);
       const [stuR,gR]=await Promise.all([
-        supabase.from("profiles").select("*").eq("role","student").eq("grade_level",sub.grade_level),
+        stuQuery.order("name"),
         supabase.from("grades").select("*").eq("subject_id",selSubject).eq("term",selTerm),
       ]);
       if (stuR.data) setStudents(stuR.data);
@@ -1266,16 +1330,24 @@ const TeacherDashboard = ({ profile, onLogout }) => {
       notify("❌ Track is required for Grades 11-12."); return;
     }
     setAddingStudent(true);
-    const result=await edgeCall("create-user",{
-      role:"student",email:form.email,password:form.password,
-      name:form.name,lrn:form.lrn,grade_level:gradeLevel,
-      section_id:form.section_id||null,gender:form.gender,birthday:form.birthday||null,
-      address:form.address,
-      tve_qualification:(gradeLevel>=8&&gradeLevel<=10)?form.tve_qualification:null,
-      shs_track:(gradeLevel===11||gradeLevel===12)?form.shs_track:null,
-    });
-    if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
-    notify("✅ Student added!"); setAddingStudent(false); fetchData();
+    try {
+      const result=await edgeCall("create-user",{
+        role:"student",email:form.email,password:form.password,
+        name:form.name,lrn:form.lrn,grade_level:gradeLevel,
+        section_id:form.section_id||null,gender:form.gender,birthday:form.birthday||null,
+        address:form.address,
+        tve_qualification:(gradeLevel>=8&&gradeLevel<=10)?form.tve_qualification:null,
+        shs_track:(gradeLevel===11||gradeLevel===12)?form.shs_track:null,
+      });
+      if (result.error){notify("❌ "+result.error);return;}
+      notify("✅ Student added!");
+      await new Promise(r=>setTimeout(r,400));
+      await fetchData();
+    } catch (err) {
+      notify("❌ "+(err.message||"Failed to add student."));
+    } finally {
+      setAddingStudent(false);
+    }
   };
 
   const generateCertificate=async(student,periodLabel,average)=>{
@@ -1319,8 +1391,43 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     }
   };
 
+  const [sf9Term,setSf9Term]=useState("final"); // 1, 2, 3, or "final"
+  const generateSF9=async student=>{
+    if (!mySection) return;
+    notify("⏳ Generating SF9...");
+    const {data:sessionData}=await supabase.auth.getSession();
+    const token=sessionData?.session?.access_token;
+    const periodLabel=sf9Term==="final"?"Final / Year-End":`Term ${sf9Term}`;
+    try {
+      const res=await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-sf9`,
+        {method:"POST",
+         headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+         body:JSON.stringify({
+           student_id:student.id,section_id:mySection.id,
+           term:sf9Term,school_year:"2026-2027",
+         })}
+      );
+      if (!res.ok) {
+        const err=await res.json().catch(()=>({error:"Failed to generate SF9"}));
+        notify("❌ "+(err.error||"Failed to generate SF9"));
+        return;
+      }
+      const blob=await res.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`SF9_${student.name.replace(/\s+/g,"_")}_${periodLabel.replace(/\s+/g,"_")}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify("✅ SF9 downloaded!");
+    } catch (e) {
+      notify("❌ "+String(e.message||e));
+    }
+  };
+
   const tabs=[["✏️","Encode","encode"],["📅","Appts","appointments"]];
-  if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"],["🏆","Honors","honors"]);
+  if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"],
+    ["🏆","Honors","honors"],["📄","SF9","reports"]);
   if (profile.is_curriculum_head) tabs.push(["➕","Students","addstudents"]);
 
   if (loading) return <Spinner/>;
@@ -1343,7 +1450,9 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                   <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Subject</label>
                   <select value={selSubject} onChange={e=>setSelSubject(e.target.value)}>
                     <option value="">-- Select --</option>
-                    {subjects.map(s=><option key={s.id} value={s.id}>{s.name} (Gr.{s.grade_level})</option>)}
+                    {subjects.map(s=><option key={s.id} value={s.id}>
+                      {s.name} (Gr.{s.grade_level}{s.tve_qualification?` · ${s.tve_qualification}`:""})
+                    </option>)}
                   </select>
                 </div>
                 <div>
@@ -1357,11 +1466,21 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             </Card>
             {selSubject?(
               <Card>
-                <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:10}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:2}}>
                   {subjects.find(s=>s.id===selSubject)?.name} — Term {selTerm}
                 </div>
+                {subjects.find(s=>s.id===selSubject)?.tve_qualification&&(
+                  <div style={{fontSize:11,color:T.textMuted,marginBottom:8}}>
+                    🎯 TVE Qualification: <strong style={{color:T.green2}}>
+                      {subjects.find(s=>s.id===selSubject)?.tve_qualification}
+                    </strong> · showing only students assigned to this qualification
+                  </div>
+                )}
                 {students.length===0
-                  ?<div style={{textAlign:"center",color:T.gray,padding:20}}>No students found.</div>
+                  ?<div style={{textAlign:"center",color:T.gray,padding:20}}>
+                      No students found{subjects.find(s=>s.id===selSubject)?.tve_qualification
+                        ?" for this TVE qualification.":"."}
+                    </div>
                   :students.map(s=>(
                     <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,
                       padding:"8px 0",borderBottom:"1px solid #e0f0e0"}}>
@@ -1419,6 +1538,11 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                           <th key={sub.id} style={{padding:"6px 6px",textAlign:"center",
                             borderBottom:"2px solid "+T.green3,whiteSpace:"nowrap",fontWeight:600}}>
                             {sub.name}
+                            {sub.tve_qualification&&(
+                              <div style={{fontSize:9,fontWeight:400,color:T.textMuted}}>
+                                {sub.tve_qualification}
+                              </div>
+                            )}
                           </th>
                         ))}
                         <th style={{padding:"6px 8px",textAlign:"center",
@@ -1456,9 +1580,14 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 </div>
                 {classStudents.filter(s=>s.gender==="Male").map(s=>(
                   <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
-                    <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn} · {s.birthday||"—"}</div>
-                    <div style={{fontSize:11,color:T.textMuted}}>{s.address||"—"}</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                        <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn} · {s.birthday||"—"}</div>
+                        <div style={{fontSize:11,color:T.textMuted}}>{s.address||"—"}</div>
+                      </div>
+                      {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
+                    </div>
                   </Card>
                 ))}
               </div>
@@ -1471,9 +1600,14 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 </div>
                 {classStudents.filter(s=>s.gender==="Female").map(s=>(
                   <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
-                    <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn} · {s.birthday||"—"}</div>
-                    <div style={{fontSize:11,color:T.textMuted}}>{s.address||"—"}</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                        <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn} · {s.birthday||"—"}</div>
+                        <div style={{fontSize:11,color:T.textMuted}}>{s.address||"—"}</div>
+                      </div>
+                      {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
+                    </div>
                   </Card>
                 ))}
               </div>
@@ -1551,7 +1685,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
               ➕ Add Students — Grade {profile.assigned_grade_level}
             </div>
             <AddStudentForm sections={sections} gradeFilter={profile.assigned_grade_level}
-              onAdd={handleAddStudent} loading={addingStudent}/>
+              onAdd={handleAddStudent} loading={addingStudent} qualifications={qualifications}/>
           </div>
         )}
 
@@ -1684,6 +1818,45 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             })}
           </div>
         )}
+        {tab==="reports"&&mySection&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
+              📄 SF9 Report Cards
+            </div>
+            <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
+              {mySection.name} · Grade {mySection.grade_level} · {classStudents.length} students
+            </div>
+            <Card style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Period</div>
+              <select value={sf9Term} onChange={e=>{
+                const v=e.target.value;
+                setSf9Term(v==="final"?"final":parseInt(v));
+              }}>
+                <option value={1}>Term 1</option>
+                <option value={2}>Term 2</option>
+                <option value={3}>Term 3</option>
+                <option value="final">Final / Year-End</option>
+              </select>
+            </Card>
+            {classStudents.length===0
+              ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No students in your advisory class yet.</div></Card>
+              :classStudents.map(s=>(
+                <Card key={s.id} style={{marginBottom:8,padding:"10px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                      <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn}</div>
+                    </div>
+                    <Btn color={T.blue} style={{padding:"6px 12px",fontSize:11}}
+                      onClick={()=>generateSF9(s)}>
+                      📄 Generate SF9
+                    </Btn>
+                  </div>
+                </Card>
+              ))
+            }
+          </div>
+        )}
       </div>
       <BottomNav tabs={tabs} active={tab} setActive={setTab}/>
     </div>
@@ -1705,6 +1878,8 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [editGrade,setEditGrade]=useState(null);
   const [resetModal,setResetModal]=useState(null);
   const [addingStudent,setAddingStudent]=useState(false);
+  const [qualifications,setQualifications]=useState([]); // [{id,name}] — admin-managed TVE qualifications
+  const [nQualification,setNQualification]=useState("");
 
   // Settings state
   const [isLocked,setIsLocked]=useState(false);
@@ -1713,7 +1888,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [applyingPass,setApplyingPass]=useState(false);
 
   const [nTeacher,setNTeacher]=useState({name:"",email:"",password:""});
-  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:""});
+  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:"",tve_qualification:""});
   const [nGrade,setNGrade]=useState({student_id:"",subject_id:"",term:1,grade:""});
   const [nSection,setNSection]=useState({name:"",grade_level:7,adviser_id:""});
 
@@ -1721,7 +1896,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
   const fetchAll=useCallback(async()=>{
     setLoading(true);
-    const [sR,tR,subR,gR,aR,secR,calR,settR]=await Promise.all([
+    const [sR,tR,subR,gR,aR,secR,calR,settR,qR]=await Promise.all([
       supabase.from("profiles").select("*").eq("role","student").order("grade_level").order("name"),
       supabase.from("profiles").select("*").eq("role","teacher").order("name"),
       supabase.from("subjects").select("*").order("grade_level"),
@@ -1730,6 +1905,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
       supabase.from("sections").select("*").order("grade_level").order("name"),
       supabase.from("school_calendar").select("*").order("year").order("month"),
       supabase.from("app_settings").select("*"),
+      supabase.from("tve_qualifications").select("*").order("name"),
     ]);
     if (sR.data) setStudents(sR.data);
     if (tR.data) setTeachers(tR.data);
@@ -1738,6 +1914,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
     if (aR.data) setAppointments(aR.data);
     if (secR.data) setSections(secR.data);
     if (calR.data) setCalendar(calR.data);
+    if (qR.data) setQualifications(qR.data);
     if (settR.data) {
       const lockSetting=settR.data.find(s=>s.key==="student_access_locked");
       if (lockSetting) setIsLocked(lockSetting.value==="true");
@@ -1791,16 +1968,26 @@ const AdminDashboard = ({ profile, onLogout }) => {
       notify("❌ Track is required for Grades 11-12."); return;
     }
     setAddingStudent(true);
-    const result=await edgeCall("create-user",{
-      role:"student",email:form.email,password:form.password,
-      name:form.name,lrn:form.lrn,grade_level:gradeLevel,
-      section_id:form.section_id||null,gender:form.gender,
-      birthday:form.birthday||null,address:form.address,
-      tve_qualification:(gradeLevel>=8&&gradeLevel<=10)?form.tve_qualification:null,
-      shs_track:(gradeLevel===11||gradeLevel===12)?form.shs_track:null,
-    });
-    if (result.error){notify("❌ "+result.error);setAddingStudent(false);return;}
-    notify("✅ Student added!"); setAddingStudent(false); fetchAll();
+    try {
+      const result=await edgeCall("create-user",{
+        role:"student",email:form.email,password:form.password,
+        name:form.name,lrn:form.lrn,grade_level:gradeLevel,
+        section_id:form.section_id||null,gender:form.gender,
+        birthday:form.birthday||null,address:form.address,
+        tve_qualification:(gradeLevel>=8&&gradeLevel<=10)?form.tve_qualification:null,
+        shs_track:(gradeLevel===11||gradeLevel===12)?form.shs_track:null,
+      });
+      if (result.error){notify("❌ "+result.error);return;}
+      notify("✅ Student added!");
+      // Small delay guards against a race where the profile row (created by a
+      // DB trigger after the auth user is created) hasn't committed yet.
+      await new Promise(r=>setTimeout(r,400));
+      await fetchAll();
+    } catch (err) {
+      notify("❌ "+(err.message||"Failed to add student."));
+    } finally {
+      setAddingStudent(false);
+    }
   };
 
   const delStudent=async id=>{
@@ -1860,10 +2047,11 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const addSubject=async()=>{
     if (!nSubject.name){notify("❌ Subject name required.");return;}
     const {error}=await supabase.from("subjects").insert({
-      name:nSubject.name,grade_level:parseInt(nSubject.grade_level),teacher_id:nSubject.teacher_id||null
+      name:nSubject.name,grade_level:parseInt(nSubject.grade_level),teacher_id:nSubject.teacher_id||null,
+      tve_qualification:nSubject.tve_qualification||null,
     });
     if (error){notify("❌ "+error.message);return;}
-    setNSubject({name:"",grade_level:7,teacher_id:""});
+    setNSubject({name:"",grade_level:7,teacher_id:"",tve_qualification:""});
     notify("✅ Subject added!"); fetchAll();
   };
 
@@ -1876,6 +2064,41 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const reassignTeacher=async(subId,teacherId)=>{
     await supabase.from("subjects").update({teacher_id:teacherId||null}).eq("id",subId);
     notify("✅ Teacher reassigned!"); fetchAll();
+  };
+
+  const reassignQualification=async(subId,qualName)=>{
+    await supabase.from("subjects").update({tve_qualification:qualName||null}).eq("id",subId);
+    notify("✅ TVE Qualification updated!"); fetchAll();
+  };
+
+  // ── TVE QUALIFICATIONS ──
+  // Admin-managed master list. This single list drives: (a) the qualification
+  // a student is assigned (Students tab), and (b) the qualification a subject
+  // is tagged with (Subjects tab) — keeping the two aligned.
+  const addQualification=async()=>{
+    const name=nQualification.trim();
+    if (!name){notify("❌ Qualification name required.");return;}
+    if (qualifications.some(q=>q.name.toLowerCase()===name.toLowerCase())){
+      notify("❌ That qualification already exists.");return;
+    }
+    const {error}=await supabase.from("tve_qualifications").insert({name});
+    if (error){notify("❌ "+error.message);return;}
+    setNQualification("");
+    notify("✅ TVE Qualification added!"); fetchAll();
+  };
+
+  const delQualification=async q=>{
+    const inUseByStudents=students.filter(s=>s.tve_qualification===q.name).length;
+    const inUseBySubjects=subjects.filter(s=>s.tve_qualification===q.name).length;
+    if (inUseByStudents>0||inUseBySubjects>0){
+      if (!window.confirm(
+        `"${q.name}" is currently used by ${inUseByStudents} student(s) and ${inUseBySubjects} subject(s). `+
+        `Deleting it will NOT change those records, but it will disappear from future dropdowns. Continue?`
+      )) return;
+    }
+    const {error}=await supabase.from("tve_qualifications").delete().eq("id",q.id);
+    if (error){notify("❌ "+error.message);return;}
+    notify("🗑️ TVE Qualification deleted."); fetchAll();
   };
 
   // ── SECTIONS ──
@@ -2088,16 +2311,60 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 </div>
               )}
             </Card>
+
+            {/* TVE Qualifications */}
+            <Card style={{marginTop:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+                🎯 TVE Qualifications
+              </div>
+              <div style={{fontSize:12,color:T.textMuted,marginBottom:12,lineHeight:1.7}}>
+                These are the official TVE qualification names for Grades 8–10. They drive the
+                qualification a student is assigned (Students tab) and the qualification a subject
+                can be tagged with (Subjects tab) — keeping the two aligned. Each section's student
+                list and each TVE subject teacher's class list are filtered using these names.
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:12}}>
+                <input placeholder="e.g. AgriCrop Production" value={nQualification}
+                  onChange={e=>setNQualification(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&addQualification()}/>
+                <Btn onClick={addQualification} style={{flexShrink:0,padding:"10px 16px"}}>➕ Add</Btn>
+              </div>
+              {qualifications.length===0
+                ?<div style={{textAlign:"center",color:T.gray,padding:14,fontSize:12}}>
+                    No TVE qualifications defined yet. Add one above.
+                  </div>
+                :qualifications.map(q=>{
+                  const studentCount=students.filter(s=>s.tve_qualification===q.name).length;
+                  const subjectCount=subjects.filter(s=>s.tve_qualification===q.name).length;
+                  return (
+                    <div key={q.id} style={{display:"flex",justifyContent:"space-between",
+                      alignItems:"center",padding:"8px 10px",background:T.bgPanel,
+                      borderRadius:8,marginBottom:6}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:T.text}}>{q.name}</div>
+                        <div style={{fontSize:10,color:T.textMuted}}>
+                          {studentCount} student{studentCount!==1?"s":""} · {subjectCount} subject{subjectCount!==1?"s":""}
+                        </div>
+                      </div>
+                      <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
+                        onClick={()=>delQualification(q)}>🗑️</Btn>
+                    </div>
+                  );
+                })
+              }
+            </Card>
           </div>
         )}
 
         {tab==="students"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>🎓 Manage Students</div>
-            <AddStudentForm sections={sections} onAdd={handleAddStudent} loading={addingStudent}/>
+            <AddStudentForm sections={sections} onAdd={handleAddStudent} loading={addingStudent}
+              qualifications={qualifications.map(q=>q.name)}/>
             <StudentListGrouped students={students} sections={sections} teachers={teachers}
               showActions={true} onDelete={delStudent}
-              onReset={u=>setResetModal(u)} onReassign={reassignSection}/>
+              onReset={u=>setResetModal(u)} onReassign={reassignSection}
+              qualifications={qualifications.map(q=>q.name)}/>
           </div>
         )}
 
@@ -2189,7 +2456,19 @@ const AdminDashboard = ({ profile, onLogout }) => {
                     padding:"4px 10px",borderRadius:6,marginBottom:6}}>Grade {gl}</div>
                   {glSecs.map(sec=>{
                     const adviser=teachers.find(t=>t.id===sec.adviser_id);
-                    const count=students.filter(s=>s.section_id===sec.id).length;
+                    const secStudents=students.filter(s=>s.section_id===sec.id);
+                    const count=secStudents.length;
+                    const isTveGrade=gl>=8&&gl<=10;
+                    const qualBreakdown=isTveGrade
+                      ?qualifications.map(q=>({
+                          name:q.name,
+                          count:secStudents.filter(s=>s.tve_qualification===q.name).length,
+                        })).filter(g=>g.count>0)
+                      :[];
+                    const unassignedCount=isTveGrade
+                      ?secStudents.filter(s=>!s.tve_qualification||
+                          !qualifications.some(q=>q.name===s.tve_qualification)).length
+                      :0;
                     return (
                       <Card key={sec.id} style={{marginBottom:6,padding:"10px 12px"}}>
                         <div style={{display:"flex",justifyContent:"space-between",
@@ -2201,6 +2480,33 @@ const AdminDashboard = ({ profile, onLogout }) => {
                           <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
                             onClick={()=>delSection(sec.id)}>🗑️</Btn>
                         </div>
+                        {isTveGrade&&(
+                          <div style={{marginBottom:8,padding:"6px 8px",background:"#f3e5f5",
+                            borderRadius:6}}>
+                            <div style={{fontSize:10,fontWeight:700,color:"#7b1fa2",marginBottom:4}}>
+                              🎯 By TVE Qualification
+                            </div>
+                            {qualBreakdown.length===0&&unassignedCount===0
+                              ?<div style={{fontSize:10,color:T.gray}}>No students yet.</div>
+                              :(
+                                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                                  {qualBreakdown.map(g=>(
+                                    <span key={g.name} style={{fontSize:10,color:T.text,
+                                      background:"#fff",borderRadius:10,padding:"2px 8px",
+                                      border:"1px solid #d8b8d8"}}>
+                                      {g.name}: <strong>{g.count}</strong>
+                                    </span>
+                                  ))}
+                                  {unassignedCount>0&&(
+                                    <span style={{fontSize:10,color:T.red,background:"#fff",
+                                      borderRadius:10,padding:"2px 8px",border:"1px solid #f0c0c0"}}>
+                                      Unassigned: <strong>{unassignedCount}</strong>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                          </div>
+                        )}
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Adviser:</div>
                           <select value={sec.adviser_id||""}
@@ -2229,7 +2535,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
                   onChange={e=>setNSubject(p=>({...p,name:e.target.value}))}/>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nSubject.grade_level}
-                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value}))}>
+                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,
+                      tve_qualification:(parseInt(e.target.value)>=8&&parseInt(e.target.value)<=10)
+                        ?p.tve_qualification:""}))}>
                     {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
                   </select>
                   <select value={nSubject.teacher_id}
@@ -2238,12 +2546,20 @@ const AdminDashboard = ({ profile, onLogout }) => {
                     {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
                 </div>
+                {parseInt(nSubject.grade_level)>=8&&parseInt(nSubject.grade_level)<=10&&(
+                  <select value={nSubject.tve_qualification}
+                    onChange={e=>setNSubject(p=>({...p,tve_qualification:e.target.value}))}>
+                    <option value="">-- TVE Qualification (none / general subject) --</option>
+                    {qualifications.map(q=><option key={q.id} value={q.name}>{q.name}</option>)}
+                  </select>
+                )}
               </div>
               <Btn onClick={addSubject} style={{width:"100%"}}>➕ Add Subject</Btn>
             </Card>
             {GRADE_LEVELS.map(gl=>{
               const subs=subjects.filter(s=>s.grade_level===gl);
               if (!subs.length) return null;
+              const isTveGrade=gl>=8&&gl<=10;
               return (
                 <div key={gl} style={{marginBottom:12}}>
                   <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green1,
@@ -2252,11 +2568,14 @@ const AdminDashboard = ({ profile, onLogout }) => {
                     <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",
                         alignItems:"center",marginBottom:6}}>
-                        <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
+                          {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
+                        </div>
                         <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
                           onClick={()=>delSubject(s.id)}>🗑️</Btn>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isTveGrade?8:0}}>
                         <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Teacher:</div>
                         <select value={s.teacher_id||""}
                           onChange={e=>reassignTeacher(s.id,e.target.value)}
@@ -2265,6 +2584,17 @@ const AdminDashboard = ({ profile, onLogout }) => {
                           {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                       </div>
+                      {isTveGrade&&(
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>TVE Qual.:</div>
+                          <select value={s.tve_qualification||""}
+                            onChange={e=>reassignQualification(s.id,e.target.value)}
+                            style={{fontSize:12,padding:"5px 8px"}}>
+                            <option value="">-- None / General --</option>
+                            {qualifications.map(q=><option key={q.id} value={q.name}>{q.name}</option>)}
+                          </select>
+                        </div>
+                      )}
                     </Card>
                   ))}
                 </div>
@@ -2289,7 +2619,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <select value={nGrade.subject_id}
                   onChange={e=>setNGrade(p=>({...p,subject_id:e.target.value}))}>
                   <option value="">-- Select Subject --</option>
-                  {subjects.map(s=><option key={s.id} value={s.id}>{s.name} (Gr.{s.grade_level})</option>)}
+                  {subjects.map(s=><option key={s.id} value={s.id}>
+                    {s.name} (Gr.{s.grade_level}{s.tve_qualification?` · ${s.tve_qualification}`:""})
+                  </option>)}
                 </select>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nGrade.term} onChange={e=>setNGrade(p=>({...p,term:e.target.value}))}>
