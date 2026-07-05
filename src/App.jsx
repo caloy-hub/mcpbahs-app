@@ -1118,6 +1118,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [allGradeSubjects,setAllGradeSubjects]=useState([]);
   const [summaryTerm,setSummaryTerm]=useState(1); // 1, 2, 3, or "final" — for My Class grade summary
   const [qualifications,setQualifications]=useState([]); // admin-managed TVE qualification names
+  const [encodedStudents,setEncodedStudents]=useState([]); // students THIS curriculum head has added
 
   const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
@@ -1147,8 +1148,14 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     }
     const {data:allSec}=await supabase.from("sections").select("*");
     if (allSec) setSections(allSec);
+    if (profile.is_curriculum_head) {
+      const {data:encData}=await supabase.from("profiles").select("*")
+        .eq("role","student").eq("grade_level",profile.assigned_grade_level)
+        .eq("encoded_by",profile.id).order("name");
+      if (encData) setEncodedStudents(encData);
+    }
     setLoading(false);
-  },[profile.id]);
+  },[profile.id,profile.is_curriculum_head,profile.assigned_grade_level]);
 
   useEffect(()=>{fetchData();},[fetchData]);
 
@@ -1170,7 +1177,18 @@ const TeacherDashboard = ({ profile, onLogout }) => {
         supabase.from("subjects").select("*").eq("grade_level",mySection.grade_level),
       ]);
       if (gR.data) setClassGrades(gR.data);
-      if (subR.data) setAllGradeSubjects(subR.data);
+      if (subR.data) {
+        // Honors "whole grade" scope aggregates across every section, so it needs
+        // every subject row for the grade. "My Class"/section scope should only
+        // show subjects that actually apply to THIS section (grade-wide shared
+        // subjects, or ones specifically assigned to this section) — otherwise
+        // other sections' same-named subjects (with different teachers) would
+        // show up as empty duplicate columns.
+        const scoped=(tab==="honors"&&honorsScope==="grade")
+          ?subR.data
+          :subR.data.filter(sub=>!sub.section_id||sub.section_id===mySection.id);
+        setAllGradeSubjects(scoped);
+      }
     })();
   },[tab,mySection,honorsScope,classStudents]);
 
@@ -1225,8 +1243,11 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     (async()=>{
       // If this subject is tagged with a TVE qualification, only show students
       // who are assigned that exact qualification — not the whole grade/class.
+      // If this subject is scoped to one section (section_id set), only show
+      // that section's students — not the whole grade level.
       let stuQuery=supabase.from("profiles").select("*")
         .eq("role","student").eq("grade_level",sub.grade_level);
+      if (sub.section_id) stuQuery=stuQuery.eq("section_id",sub.section_id);
       if (sub.tve_qualification) stuQuery=stuQuery.eq("tve_qualification",sub.tve_qualification);
       const [stuR,gR]=await Promise.all([
         stuQuery.order("name"),
@@ -1450,9 +1471,14 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                   <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Subject</label>
                   <select value={selSubject} onChange={e=>setSelSubject(e.target.value)}>
                     <option value="">-- Select --</option>
-                    {subjects.map(s=><option key={s.id} value={s.id}>
-                      {s.name} (Gr.{s.grade_level}{s.tve_qualification?` · ${s.tve_qualification}`:""})
-                    </option>)}
+                    {subjects.map(s=>{
+                      const secName=s.section_id
+                        ?sections.find(sec=>sec.id===s.section_id)?.name
+                        :null;
+                      return <option key={s.id} value={s.id}>
+                        {s.name} (Gr.{s.grade_level}{secName?` · Sec. ${secName}`:""}{s.tve_qualification?` · ${s.tve_qualification}`:""})
+                      </option>;
+                    })}
                   </select>
                 </div>
                 <div>
@@ -1686,6 +1712,47 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             </div>
             <AddStudentForm sections={sections} gradeFilter={profile.assigned_grade_level}
               onAdd={handleAddStudent} loading={addingStudent} qualifications={qualifications}/>
+
+            <div style={{fontSize:14,fontWeight:700,color:T.green1,margin:"18px 0 10px"}}>
+              📋 Students You've Encoded ({encodedStudents.length})
+            </div>
+            {encodedStudents.length===0
+              ?<Card><div style={{textAlign:"center",color:T.gray,padding:10}}>
+                  You haven't added any students yet.
+                </div></Card>
+              :sections.filter(sec=>sec.grade_level===parseInt(profile.assigned_grade_level))
+                .map(sec=>{
+                  const secStudents=encodedStudents.filter(s=>s.section_id===sec.id);
+                  if (!secStudents.length) return null;
+                  return (
+                    <div key={sec.id} style={{marginBottom:10}}>
+                      <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green2,
+                        padding:"4px 10px",borderRadius:6,marginBottom:6}}>
+                        🏫 {sec.name} ({secStudents.length})
+                      </div>
+                      {secStudents.map(s=>(
+                        <Card key={s.id} style={{marginBottom:6,padding:"8px 12px"}}>
+                          <div style={{fontWeight:600,fontSize:13,color:T.text}}>{s.name}</div>
+                          <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn}</div>
+                        </Card>
+                      ))}
+                    </div>
+                  );
+                })}
+            {encodedStudents.filter(s=>!s.section_id).length>0&&(
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.gray,
+                  padding:"4px 10px",borderRadius:6,marginBottom:6}}>
+                  No Section Assigned ({encodedStudents.filter(s=>!s.section_id).length})
+                </div>
+                {encodedStudents.filter(s=>!s.section_id).map(s=>(
+                  <Card key={s.id} style={{marginBottom:6,padding:"8px 12px"}}>
+                    <div style={{fontWeight:600,fontSize:13,color:T.text}}>{s.name}</div>
+                    <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn}</div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -1888,7 +1955,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [applyingPass,setApplyingPass]=useState(false);
 
   const [nTeacher,setNTeacher]=useState({name:"",email:"",password:""});
-  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:"",tve_qualification:""});
+  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:"",tve_qualification:"",section_id:""});
   const [nGrade,setNGrade]=useState({student_id:"",subject_id:"",term:1,grade:""});
   const [nSection,setNSection]=useState({name:"",grade_level:7,adviser_id:""});
 
@@ -2046,12 +2113,14 @@ const AdminDashboard = ({ profile, onLogout }) => {
   // ── SUBJECTS ──
   const addSubject=async()=>{
     if (!nSubject.name){notify("❌ Subject name required.");return;}
+    if (!nSubject.section_id){notify("❌ Please choose a Section (or 'All Sections').");return;}
     const {error}=await supabase.from("subjects").insert({
       name:nSubject.name,grade_level:parseInt(nSubject.grade_level),teacher_id:nSubject.teacher_id||null,
       tve_qualification:nSubject.tve_qualification||null,
+      section_id:nSubject.section_id==="__ALL__"?null:nSubject.section_id,
     });
     if (error){notify("❌ "+error.message);return;}
-    setNSubject({name:"",grade_level:7,teacher_id:"",tve_qualification:""});
+    setNSubject({name:"",grade_level:7,teacher_id:"",tve_qualification:"",section_id:""});
     notify("✅ Subject added!"); fetchAll();
   };
 
@@ -2064,6 +2133,15 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const reassignTeacher=async(subId,teacherId)=>{
     await supabase.from("subjects").update({teacher_id:teacherId||null}).eq("id",subId);
     notify("✅ Teacher reassigned!"); fetchAll();
+  };
+
+  // section_id === null means "applies to every section in this grade level"
+  // (the old, un-split behavior). Setting it scopes this subject/teacher
+  // to one specific section only — so the same subject name can have a
+  // different row (and a different teacher) per section.
+  const reassignSubjectSection=async(subId,sectionId)=>{
+    await supabase.from("subjects").update({section_id:sectionId||null}).eq("id",subId);
+    notify("✅ Section updated!"); fetchAll();
   };
 
   const reassignQualification=async(subId,qualName)=>{
@@ -2535,16 +2613,28 @@ const AdminDashboard = ({ profile, onLogout }) => {
                   onChange={e=>setNSubject(p=>({...p,name:e.target.value}))}/>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nSubject.grade_level}
-                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,
+                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,section_id:"",
                       tve_qualification:(parseInt(e.target.value)>=8&&parseInt(e.target.value)<=10)
                         ?p.tve_qualification:""}))}>
                     {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
                   </select>
-                  <select value={nSubject.teacher_id}
-                    onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
-                    <option value="">-- Teacher (opt) --</option>
-                    {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                  <select value={nSubject.section_id}
+                    onChange={e=>setNSubject(p=>({...p,section_id:e.target.value}))}>
+                    <option value="">-- Section --</option>
+                    {sections.filter(sec=>sec.grade_level===parseInt(nSubject.grade_level))
+                      .map(sec=><option key={sec.id} value={sec.id}>{sec.name}</option>)}
+                    <option value="__ALL__">All Sections (shared)</option>
                   </select>
+                </div>
+                <select value={nSubject.teacher_id}
+                  onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
+                  <option value="">-- Teacher assigned to this Grade + Section --</option>
+                  {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                <div style={{fontSize:10,color:T.textMuted,marginTop:-4}}>
+                  💡 Pick the specific Section this teacher handles. To give the same subject a
+                  different teacher for another section, add it again choosing that section.
+                  "All Sections" only applies if one teacher truly covers the whole grade level.
                 </div>
                 {parseInt(nSubject.grade_level)>=8&&parseInt(nSubject.grade_level)<=10&&(
                   <select value={nSubject.tve_qualification}
@@ -2560,28 +2650,46 @@ const AdminDashboard = ({ profile, onLogout }) => {
               const subs=subjects.filter(s=>s.grade_level===gl);
               if (!subs.length) return null;
               const isTveGrade=gl>=8&&gl<=10;
+              const gradeSections=sections.filter(sec=>sec.grade_level===gl);
               return (
                 <div key={gl} style={{marginBottom:12}}>
                   <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green1,
                     padding:"4px 10px",borderRadius:6,marginBottom:6}}>Grade {gl}</div>
-                  {subs.map(s=>(
+                  {subs.map(s=>{
+                    const sectionName=s.section_id
+                      ?(gradeSections.find(sec=>sec.id===s.section_id)?.name||"Unknown Section")
+                      :null;
+                    return (
                     <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",
                         alignItems:"center",marginBottom:6}}>
                         <div>
                           <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
-                          {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
+                          <div style={{display:"flex",gap:4,marginTop:2}}>
+                            <Badge text={sectionName?`Section: ${sectionName}`:"All Sections"}
+                              color={sectionName?T.green2:T.gray}/>
+                            {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
+                          </div>
                         </div>
                         <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
                           onClick={()=>delSubject(s.id)}>🗑️</Btn>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isTveGrade?8:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                         <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Teacher:</div>
                         <select value={s.teacher_id||""}
                           onChange={e=>reassignTeacher(s.id,e.target.value)}
                           style={{fontSize:12,padding:"5px 8px"}}>
                           <option value="">-- Unassigned --</option>
                           {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isTveGrade?8:0}}>
+                        <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Section:</div>
+                        <select value={s.section_id||""}
+                          onChange={e=>reassignSubjectSection(s.id,e.target.value)}
+                          style={{fontSize:12,padding:"5px 8px"}}>
+                          <option value="">-- All Sections (shared) --</option>
+                          {gradeSections.map(sec=><option key={sec.id} value={sec.id}>{sec.name}</option>)}
                         </select>
                       </div>
                       {isTveGrade&&(
@@ -2596,7 +2704,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
                         </div>
                       )}
                     </Card>
-                  ))}
+                  );})}
                 </div>
               );
             })}
@@ -2619,9 +2727,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <select value={nGrade.subject_id}
                   onChange={e=>setNGrade(p=>({...p,subject_id:e.target.value}))}>
                   <option value="">-- Select Subject --</option>
-                  {subjects.map(s=><option key={s.id} value={s.id}>
-                    {s.name} (Gr.{s.grade_level}{s.tve_qualification?` · ${s.tve_qualification}`:""})
-                  </option>)}
+                  {subjects.map(s=>{
+                    const secName=s.section_id?sections.find(sec=>sec.id===s.section_id)?.name:null;
+                    return <option key={s.id} value={s.id}>
+                      {s.name} (Gr.{s.grade_level}{secName?` · Sec. ${secName}`:""}{s.tve_qualification?` · ${s.tve_qualification}`:""})
+                    </option>;
+                  })}
                 </select>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nGrade.term} onChange={e=>setNGrade(p=>({...p,term:e.target.value}))}>
