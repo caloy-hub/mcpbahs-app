@@ -35,27 +35,37 @@ const TERM_MONTHS = [
 ];
 
 const T = {
-  bg:"#f0f7ee", bgCard:"#ffffff", bgPanel:"#e8f5e2",
-  green1:"#1b4d1f", green2:"#2d6a30", green3:"#3a8c3f",
-  green4:"#4caf50", greenLight:"#81c784",
-  yellow:"#f5c800", yellowDark:"#e6a800",
+  bg:"#f6f4ec", bgCard:"#ffffff", bgPanel:"#f1efe1",
+  green1:"#1c332a", green2:"#2f5142", green3:"#b9924a", green4:"#4d7c5f",
+  greenLight:"#d9cfa8",
+  yellow:"#e0a940", yellowDark:"#c98f2e",
   blue:"#003082", red:"#c62828",
-  white:"#ffffff", gray:"#6a7c6a",
-  border:"#b8dab840", text:"#1b3a1e", textMuted:"#4a7a4e",
+  white:"#ffffff", gray:"#7c8b80",
+  border:"#e4dfc9", text:"#1c332a", textMuted:"#6b7d72",
+  // sidebar (left navigation panel)
+  sidebarBg:"#1c332a", sidebarText:"#f3efe4", sidebarMuted:"#b7c7bc",
+  sidebarActiveBg:"rgba(185,146,74,0.16)", sidebarBorder:"#2c4a3d",
+  gold:"#b9924a", goldDark:"#7c6a3b",
 };
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif;}
-  body{background:#f0f7ee;color:#1b3a1e;}
+  body{background:#f6f4ec;color:#1c332a;}
   ::-webkit-scrollbar{width:4px;}
-  ::-webkit-scrollbar-thumb{background:#3a8c3f;border-radius:4px;}
+  ::-webkit-scrollbar-thumb{background:#b9924a;border-radius:4px;}
   input,select,textarea{
-    background:#e8f5e2;color:#1b3a1e;border:1px solid #b8dab8;
+    background:#f1efe1;color:#1c332a;border:1px solid #ddd6bf;
     border-radius:8px;padding:10px 14px;width:100%;outline:none;font-size:14px;
   }
-  input:focus,select:focus,textarea:focus{border-color:#4caf50;box-shadow:0 0 0 2px #4caf5020;}
+  input:focus,select:focus,textarea:focus{border-color:#b9924a;box-shadow:0 0 0 2px #b9924a26;}
   button{cursor:pointer;border:none;border-radius:8px;font-weight:600;transition:all .2s;}
   @keyframes spin{to{transform:rotate(360deg)}}
+  .sidenav{width:212px;flex-shrink:0;}
+  .sidenav-label,.sidenav-profile-text{display:inline;}
+  @media (max-width:760px){
+    .sidenav{width:64px;}
+    .sidenav-label,.sidenav-profile-text{display:none;}
+  }
 `;
 
 const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
@@ -91,13 +101,13 @@ const edgeCall = async (fn, body) => {
 
 const Card = ({ children, style={} }) => (
   <div style={{background:T.bgCard,borderRadius:12,padding:16,
-    border:"1px solid #c8e6c9",boxShadow:"0 2px 8px #00000010",...style}}>
+    border:`1px solid ${T.border}`,boxShadow:"0 2px 8px #00000010",...style}}>
     {children}
   </div>
 );
 const Btn = ({ children, onClick, color=T.green3, style={}, disabled=false }) => (
   <button onClick={onClick} disabled={disabled} style={{
-    background:disabled?"#ccc":color,color:color===T.yellow?"#1b3a1e":T.white,
+    background:disabled?"#ccc":color,color:color===T.yellow?T.text:T.white,
     padding:"10px 16px",fontSize:13,boxShadow:disabled?"none":"0 2px 6px #00000020",
     ...style,opacity:disabled?.6:1}}>{children}</button>
 );
@@ -115,7 +125,7 @@ const Toast = ({ msg }) => msg?(
 const Spinner = () => (
   <div style={{display:"flex",alignItems:"center",justifyContent:"center",
     height:"100vh",background:T.bg,flexDirection:"column",gap:16}}>
-    <div style={{width:48,height:48,border:"4px solid #c8e6c9",
+    <div style={{width:48,height:48,border:"4px solid #e4dfc9",
       borderTop:`4px solid ${T.green3}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
     <div style={{color:T.textMuted,fontSize:14,fontWeight:600}}>Loading...</div>
   </div>
@@ -195,30 +205,34 @@ const AgriansBranding = () => (
   </div>
 );
 
-const TopBar = ({ name, sub, onLogout }) => (
-  <div style={{background:T.bgCard,padding:"10px 16px",display:"flex",
-    justifyContent:"space-between",alignItems:"center",
-    borderBottom:"2px solid #c8e6c9",boxShadow:"0 2px 6px #00000010"}}>
-    <div>
-      <div style={{fontWeight:700,fontSize:14,color:T.green1}}>{name}</div>
-      <div style={{fontSize:11,color:T.textMuted}}>{sub}</div>
+const SideNav = ({ tabs, active, setActive, name, sub, onLogout }) => (
+  <div className="sidenav" style={{background:T.sidebarBg,color:T.sidebarText,
+    display:"flex",flexDirection:"column",padding:"16px 10px"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
+      {tabs.map(([ic,lb,tb])=>(
+        <button key={tb} onClick={()=>setActive(tb)} title={lb} style={{
+          display:"flex",alignItems:"center",gap:10,padding:"10px 10px",
+          borderRadius:8,border:"none",textAlign:"left",fontSize:13,
+          borderLeft:active===tb?`2px solid ${T.gold}`:"2px solid transparent",
+          background:active===tb?T.sidebarActiveBg:"transparent",
+          color:active===tb?T.sidebarText:T.sidebarMuted,
+          fontWeight:active===tb?700:400,justifyContent:"flex-start"}}>
+          <span style={{fontSize:17,flexShrink:0}}>{ic}</span>
+          <span className="sidenav-label" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lb}</span>
+        </button>
+      ))}
     </div>
-    <Btn onClick={onLogout} color={T.red} style={{padding:"6px 12px",fontSize:12}}>Logout</Btn>
-  </div>
-);
-
-const BottomNav = ({ tabs, active, setActive }) => (
-  <div style={{position:"fixed",bottom:0,left:0,right:0,background:T.bgCard,
-    borderTop:"2px solid #c8e6c9",display:"flex",zIndex:100,boxShadow:"0 -2px 8px #00000015"}}>
-    {tabs.map(([ic,lb,tb])=>(
-      <button key={tb} onClick={()=>setActive(tb)} style={{
-        flex:1,padding:"10px 2px",background:"transparent",border:"none",cursor:"pointer",
-        color:active===tb?T.green2:T.gray,display:"flex",flexDirection:"column",
-        alignItems:"center",fontSize:9,fontWeight:active===tb?700:400,gap:2,
-        borderTop:active===tb?`2px solid ${T.green3}`:"2px solid transparent"}}>
-        <span style={{fontSize:18}}>{ic}</span>{lb}
-      </button>
-    ))}
+    <div style={{borderTop:`0.5px solid ${T.sidebarBorder}`,paddingTop:12,marginTop:8}}>
+      <div className="sidenav-profile-text" style={{marginBottom:8}}>
+        <div style={{fontSize:12,fontWeight:700,color:T.sidebarText,
+          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
+        <div style={{fontSize:10,color:T.sidebarMuted,lineHeight:1.4}}>{sub}</div>
+      </div>
+      <Btn onClick={onLogout} color={T.red} style={{width:"100%",padding:"8px 4px",fontSize:12,
+        display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+        <span>⏻</span><span className="sidenav-label">Logout</span>
+      </Btn>
+    </div>
   </div>
 );
 
@@ -715,7 +729,7 @@ const Login = () => {
 
   return (
     <div style={{minHeight:"100vh",
-      background:"linear-gradient(160deg,#e8f5e2 0%,#f0f7ee 50%,#e1f0e1 100%)",
+      background:"linear-gradient(160deg,#f6f4ec 0%,#f1eee0 50%,#ece7d5 100%)",
       display:"flex",flexDirection:"column"}}>
       <SchoolHeader/>
       <div style={{flex:1,display:"flex",flexDirection:"column",
@@ -862,10 +876,14 @@ const StudentDashboard = ({ profile, onLogout }) => {
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
-      <TopBar name={profile.name}
-        sub={`Grade ${profile.grade_level}${section?" – "+section.name:""} · LRN: ${profile.lrn}`}
-        onLogout={onLogout}/>
-      <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
+      <Toast msg={toast}/>
+      <div style={{flex:1,display:"flex",minHeight:0}}>
+        <SideNav
+          tabs={[["👤","Profile","profile"],["📊","Grades","grades"],["📅","Appt","appointment"]]}
+          active={tab} setActive={setTab} onLogout={onLogout}
+          name={profile.name}
+          sub={`Grade ${profile.grade_level}${section?" – "+section.name:""} · LRN: ${profile.lrn}`}/>
+        <div style={{flex:1,overflowY:"auto",padding:14}}>
 
         {tab==="profile"&&(
           <div>
@@ -1081,11 +1099,8 @@ const StudentDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
+        </div>
       </div>
-      <BottomNav
-        tabs={[["👤","Profile","profile"],["📊","Grades","grades"],["📅","Appt","appointment"]]}
-        active={tab} setActive={setTab}/>
-      <Toast msg={toast}/>
     </div>
   );
 };
@@ -1456,11 +1471,12 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
-      <TopBar name={profile.name}
-        sub={`Teacher${mySection?" · Adviser: "+mySection.name:""}${profile.is_curriculum_head?" · Curriculum Head Gr."+profile.assigned_grade_level:""}`}
-        onLogout={onLogout}/>
       <Toast msg={toast}/>
-      <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
+      <div style={{flex:1,display:"flex",minHeight:0}}>
+        <SideNav tabs={tabs} active={tab} setActive={setTab} onLogout={onLogout}
+          name={profile.name}
+          sub={`Teacher${mySection?" · Adviser: "+mySection.name:""}${profile.is_curriculum_head?" · Curriculum Head Gr."+profile.assigned_grade_level:""}`}/>
+        <div style={{flex:1,overflowY:"auto",padding:14}}>
 
         {tab==="encode"&&(
           <div>
@@ -1924,8 +1940,8 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
+        </div>
       </div>
-      <BottomNav tabs={tabs} active={tab} setActive={setTab}/>
     </div>
   );
 };
@@ -2257,7 +2273,6 @@ const AdminDashboard = ({ profile, onLogout }) => {
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
-      <TopBar name="Admin Panel" sub={profile.name} onLogout={onLogout}/>
       <Toast msg={toast}/>
 
       {resetModal&&(
@@ -2283,7 +2298,18 @@ const AdminDashboard = ({ profile, onLogout }) => {
         </div>
       )}
 
-      <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
+      <div style={{flex:1,display:"flex",minHeight:0}}>
+        <SideNav
+          tabs={[
+            ["📊","Overview","overview"],["⚙️","Settings","settings"],
+            ["🎓","Students","students"],["👨‍🏫","Teachers","teachers"],
+            ["🏫","Sections","sections"],["📚","Subjects","subjects"],
+            ["📝","Grades","grades"],["📅","Calendar","calendar"],
+            ["🗓️","Appts","appointments"],
+          ]}
+          active={tab} setActive={setTab} onLogout={onLogout}
+          name="Admin Panel" sub={profile.name}/>
+        <div style={{flex:1,overflowY:"auto",padding:14}}>
 
         {tab==="overview"&&(
           <div>
@@ -2808,17 +2834,8 @@ const AdminDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
+        </div>
       </div>
-
-      <BottomNav
-        tabs={[
-          ["📊","Overview","overview"],["⚙️","Settings","settings"],
-          ["🎓","Students","students"],["👨‍🏫","Teachers","teachers"],
-          ["🏫","Sections","sections"],["📚","Subjects","subjects"],
-          ["📝","Grades","grades"],["📅","Calendar","calendar"],
-          ["🗓️","Appts","appointments"],
-        ]}
-        active={tab} setActive={setTab}/>
     </div>
   );
 };
