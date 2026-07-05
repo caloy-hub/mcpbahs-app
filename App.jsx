@@ -2113,9 +2113,11 @@ const AdminDashboard = ({ profile, onLogout }) => {
   // ── SUBJECTS ──
   const addSubject=async()=>{
     if (!nSubject.name){notify("❌ Subject name required.");return;}
+    if (!nSubject.section_id){notify("❌ Please choose a Section (or 'All Sections').");return;}
     const {error}=await supabase.from("subjects").insert({
       name:nSubject.name,grade_level:parseInt(nSubject.grade_level),teacher_id:nSubject.teacher_id||null,
-      tve_qualification:nSubject.tve_qualification||null,section_id:nSubject.section_id||null,
+      tve_qualification:nSubject.tve_qualification||null,
+      section_id:nSubject.section_id==="__ALL__"?null:nSubject.section_id,
     });
     if (error){notify("❌ "+error.message);return;}
     setNSubject({name:"",grade_level:7,teacher_id:"",tve_qualification:"",section_id:""});
@@ -2611,26 +2613,28 @@ const AdminDashboard = ({ profile, onLogout }) => {
                   onChange={e=>setNSubject(p=>({...p,name:e.target.value}))}/>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nSubject.grade_level}
-                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,
+                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,section_id:"",
                       tve_qualification:(parseInt(e.target.value)>=8&&parseInt(e.target.value)<=10)
                         ?p.tve_qualification:""}))}>
                     {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
                   </select>
-                  <select value={nSubject.teacher_id}
-                    onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
-                    <option value="">-- Teacher (opt) --</option>
-                    {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                  <select value={nSubject.section_id}
+                    onChange={e=>setNSubject(p=>({...p,section_id:e.target.value}))}>
+                    <option value="">-- Section --</option>
+                    {sections.filter(sec=>sec.grade_level===parseInt(nSubject.grade_level))
+                      .map(sec=><option key={sec.id} value={sec.id}>{sec.name}</option>)}
+                    <option value="__ALL__">All Sections (shared)</option>
                   </select>
                 </div>
-                <select value={nSubject.section_id}
-                  onChange={e=>setNSubject(p=>({...p,section_id:e.target.value}))}>
-                  <option value="">-- All Sections in this Grade (shared) --</option>
-                  {sections.filter(sec=>sec.grade_level===parseInt(nSubject.grade_level))
-                    .map(sec=><option key={sec.id} value={sec.id}>Only Section: {sec.name}</option>)}
+                <select value={nSubject.teacher_id}
+                  onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
+                  <option value="">-- Teacher assigned to this Grade + Section --</option>
+                  {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
                 <div style={{fontSize:10,color:T.textMuted,marginTop:-4}}>
-                  💡 Leave as "All Sections" for a subject shared grade-wide. Pick one section if
-                  this section has its own teacher for this subject (add it again per section for others).
+                  💡 Pick the specific Section this teacher handles. To give the same subject a
+                  different teacher for another section, add it again choosing that section.
+                  "All Sections" only applies if one teacher truly covers the whole grade level.
                 </div>
                 {parseInt(nSubject.grade_level)>=8&&parseInt(nSubject.grade_level)<=10&&(
                   <select value={nSubject.tve_qualification}
