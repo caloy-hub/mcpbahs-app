@@ -35,37 +35,27 @@ const TERM_MONTHS = [
 ];
 
 const T = {
-  bg:"#f6f4ec", bgCard:"#ffffff", bgPanel:"#f1efe1",
-  green1:"#1c332a", green2:"#2f5142", green3:"#b9924a", green4:"#4d7c5f",
-  greenLight:"#d9cfa8",
-  yellow:"#e0a940", yellowDark:"#c98f2e",
+  bg:"#f0f7ee", bgCard:"#ffffff", bgPanel:"#e8f5e2",
+  green1:"#1b4d1f", green2:"#2d6a30", green3:"#3a8c3f",
+  green4:"#4caf50", greenLight:"#81c784",
+  yellow:"#f5c800", yellowDark:"#e6a800",
   blue:"#003082", red:"#c62828",
-  white:"#ffffff", gray:"#7c8b80",
-  border:"#e4dfc9", text:"#1c332a", textMuted:"#6b7d72",
-  // sidebar (left navigation panel)
-  sidebarBg:"#1c332a", sidebarText:"#f3efe4", sidebarMuted:"#b7c7bc",
-  sidebarActiveBg:"rgba(185,146,74,0.16)", sidebarBorder:"#2c4a3d",
-  gold:"#b9924a", goldDark:"#7c6a3b",
+  white:"#ffffff", gray:"#6a7c6a",
+  border:"#b8dab840", text:"#1b3a1e", textMuted:"#4a7a4e",
 };
 
 const css = `
   *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',sans-serif;}
-  body{background:#f6f4ec;color:#1c332a;}
+  body{background:#f0f7ee;color:#1b3a1e;}
   ::-webkit-scrollbar{width:4px;}
-  ::-webkit-scrollbar-thumb{background:#b9924a;border-radius:4px;}
+  ::-webkit-scrollbar-thumb{background:#3a8c3f;border-radius:4px;}
   input,select,textarea{
-    background:#f1efe1;color:#1c332a;border:1px solid #ddd6bf;
+    background:#e8f5e2;color:#1b3a1e;border:1px solid #b8dab8;
     border-radius:8px;padding:10px 14px;width:100%;outline:none;font-size:14px;
   }
-  input:focus,select:focus,textarea:focus{border-color:#b9924a;box-shadow:0 0 0 2px #b9924a26;}
+  input:focus,select:focus,textarea:focus{border-color:#4caf50;box-shadow:0 0 0 2px #4caf5020;}
   button{cursor:pointer;border:none;border-radius:8px;font-weight:600;transition:all .2s;}
   @keyframes spin{to{transform:rotate(360deg)}}
-  .sidenav{width:212px;flex-shrink:0;}
-  .sidenav-label,.sidenav-profile-text{display:inline;}
-  @media (max-width:760px){
-    .sidenav{width:64px;}
-    .sidenav-label,.sidenav-profile-text{display:none;}
-  }
 `;
 
 const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
@@ -78,6 +68,75 @@ const remark = g => {
   return { r:"Did Not Meet Expectations", c:T.red };
 };
 const attendColor = pct => pct>=90?"#2e7d32":pct>=75?T.yellow:T.red;
+
+// Computes grade-encoding completion for one section: for every subject that
+// applies to that section (matching grade level, and TVE qualification when
+// the subject is TVE-tagged), how many of the expected student×term grade
+// entries actually exist. Used by the Admin overview and the Adviser panel.
+const computeSectionEncoding = (section, subjects, students, grades) => {
+  const secStudents = students.filter(s => s.section_id === section.id);
+  const applicable = subjects.filter(sub => sub.grade_level === section.grade_level);
+  let totalExpected = 0, totalActual = 0;
+  const subjectStats = applicable.map(sub => {
+    const eligible = sub.tve_qualification
+      ? secStudents.filter(s => s.tve_qualification === sub.tve_qualification)
+      : secStudents;
+    const expected = eligible.length * 3; // 3 terms
+    const eligibleIds = new Set(eligible.map(s => s.id));
+    const actual = grades.filter(g => g.subject_id === sub.id && eligibleIds.has(g.student_id)).length;
+    totalExpected += expected; totalActual += actual;
+    return { subject: sub, eligibleCount: eligible.length, expected, actual,
+      percent: expected>0 ? Math.round((actual/expected)*100) : null };
+  }).filter(s => s.expected > 0); // subjects with nobody eligible aren't meaningful here
+  return {
+    section, studentCount: secStudents.length,
+    percent: totalExpected>0 ? Math.round((totalActual/totalExpected)*100) : null,
+    totalExpected, totalActual,
+    doneSubjects: subjectStats.filter(s => s.percent===100),
+    pendingSubjects: subjectStats.filter(s => s.percent!==100),
+  };
+};
+
+const encodingColor = pct => pct===null?T.gray:pct>=100?T.green4:pct>=50?T.yellow:T.red;
+
+const EncodingProgressCard = ({ result }) => {
+  const { section, percent, doneSubjects, pendingSubjects, studentCount } = result;
+  return (
+    <Card style={{marginBottom:8,padding:"10px 12px"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+        <div>
+          <div style={{fontWeight:700,fontSize:13,color:T.text}}>{section.name}</div>
+          <div style={{fontSize:11,color:T.textMuted}}>{studentCount} students</div>
+        </div>
+        <div style={{fontSize:20,fontWeight:900,color:encodingColor(percent)}}>
+          {percent===null?"—":`${percent}%`}
+        </div>
+      </div>
+      <div style={{height:8,borderRadius:6,background:"#e0f0e0",overflow:"hidden",marginBottom:8}}>
+        <div style={{height:"100%",width:`${percent||0}%`,background:encodingColor(percent),transition:"width .3s"}}/>
+      </div>
+      {doneSubjects.length===0&&pendingSubjects.length===0
+        ?<div style={{fontSize:11,color:T.gray}}>No subjects apply to this section yet.</div>
+        :(
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {doneSubjects.map(s=>(
+              <span key={s.subject.id} style={{fontSize:10,fontWeight:700,color:"#2e7d32",
+                background:"#e8f5e9",border:"1px solid #c8e6c9",borderRadius:10,padding:"2px 8px"}}>
+                ✅ {s.subject.name}
+              </span>
+            ))}
+            {pendingSubjects.map(s=>(
+              <span key={s.subject.id} style={{fontSize:10,fontWeight:700,color:T.red,
+                background:"#ffebee",border:"1px solid #f0c0c0",borderRadius:10,padding:"2px 8px"}}>
+                ⏳ {s.subject.name} ({s.actual}/{s.expected})
+              </span>
+            ))}
+          </div>
+        )
+      }
+    </Card>
+  );
+};
 
 const edgeCall = async (fn, body) => {
   try {
@@ -101,13 +160,13 @@ const edgeCall = async (fn, body) => {
 
 const Card = ({ children, style={} }) => (
   <div style={{background:T.bgCard,borderRadius:12,padding:16,
-    border:`1px solid ${T.border}`,boxShadow:"0 2px 8px #00000010",...style}}>
+    border:"1px solid #c8e6c9",boxShadow:"0 2px 8px #00000010",...style}}>
     {children}
   </div>
 );
 const Btn = ({ children, onClick, color=T.green3, style={}, disabled=false }) => (
   <button onClick={onClick} disabled={disabled} style={{
-    background:disabled?"#ccc":color,color:color===T.yellow?T.text:T.white,
+    background:disabled?"#ccc":color,color:color===T.yellow?"#1b3a1e":T.white,
     padding:"10px 16px",fontSize:13,boxShadow:disabled?"none":"0 2px 6px #00000020",
     ...style,opacity:disabled?.6:1}}>{children}</button>
 );
@@ -125,7 +184,7 @@ const Toast = ({ msg }) => msg?(
 const Spinner = () => (
   <div style={{display:"flex",alignItems:"center",justifyContent:"center",
     height:"100vh",background:T.bg,flexDirection:"column",gap:16}}>
-    <div style={{width:48,height:48,border:"4px solid #e4dfc9",
+    <div style={{width:48,height:48,border:"4px solid #c8e6c9",
       borderTop:`4px solid ${T.green3}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
     <div style={{color:T.textMuted,fontSize:14,fontWeight:600}}>Loading...</div>
   </div>
@@ -205,34 +264,30 @@ const AgriansBranding = () => (
   </div>
 );
 
-const SideNav = ({ tabs, active, setActive, name, sub, onLogout }) => (
-  <div className="sidenav" style={{background:T.sidebarBg,color:T.sidebarText,
-    display:"flex",flexDirection:"column",padding:"16px 10px"}}>
-    <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,overflowY:"auto"}}>
-      {tabs.map(([ic,lb,tb])=>(
-        <button key={tb} onClick={()=>setActive(tb)} title={lb} style={{
-          display:"flex",alignItems:"center",gap:10,padding:"10px 10px",
-          borderRadius:8,border:"none",textAlign:"left",fontSize:13,
-          borderLeft:active===tb?`2px solid ${T.gold}`:"2px solid transparent",
-          background:active===tb?T.sidebarActiveBg:"transparent",
-          color:active===tb?T.sidebarText:T.sidebarMuted,
-          fontWeight:active===tb?700:400,justifyContent:"flex-start"}}>
-          <span style={{fontSize:17,flexShrink:0}}>{ic}</span>
-          <span className="sidenav-label" style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lb}</span>
-        </button>
-      ))}
+const TopBar = ({ name, sub, onLogout }) => (
+  <div style={{background:T.bgCard,padding:"10px 16px",display:"flex",
+    justifyContent:"space-between",alignItems:"center",
+    borderBottom:"2px solid #c8e6c9",boxShadow:"0 2px 6px #00000010"}}>
+    <div>
+      <div style={{fontWeight:700,fontSize:14,color:T.green1}}>{name}</div>
+      <div style={{fontSize:11,color:T.textMuted}}>{sub}</div>
     </div>
-    <div style={{borderTop:`0.5px solid ${T.sidebarBorder}`,paddingTop:12,marginTop:8}}>
-      <div className="sidenav-profile-text" style={{marginBottom:8}}>
-        <div style={{fontSize:12,fontWeight:700,color:T.sidebarText,
-          whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</div>
-        <div style={{fontSize:10,color:T.sidebarMuted,lineHeight:1.4}}>{sub}</div>
-      </div>
-      <Btn onClick={onLogout} color={T.red} style={{width:"100%",padding:"8px 4px",fontSize:12,
-        display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-        <span>⏻</span><span className="sidenav-label">Logout</span>
-      </Btn>
-    </div>
+    <Btn onClick={onLogout} color={T.red} style={{padding:"6px 12px",fontSize:12}}>Logout</Btn>
+  </div>
+);
+
+const BottomNav = ({ tabs, active, setActive }) => (
+  <div style={{position:"fixed",bottom:0,left:0,right:0,background:T.bgCard,
+    borderTop:"2px solid #c8e6c9",display:"flex",zIndex:100,boxShadow:"0 -2px 8px #00000015"}}>
+    {tabs.map(([ic,lb,tb])=>(
+      <button key={tb} onClick={()=>setActive(tb)} style={{
+        flex:1,padding:"10px 2px",background:"transparent",border:"none",cursor:"pointer",
+        color:active===tb?T.green2:T.gray,display:"flex",flexDirection:"column",
+        alignItems:"center",fontSize:9,fontWeight:active===tb?700:400,gap:2,
+        borderTop:active===tb?`2px solid ${T.green3}`:"2px solid transparent"}}>
+        <span style={{fontSize:18}}>{ic}</span>{lb}
+      </button>
+    ))}
   </div>
 );
 
@@ -470,7 +525,138 @@ const AddStudentForm = ({ sections, gradeFilter, onAdd, loading, qualifications 
   );
 };
 
-const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign, qualifications=[] }) => (
+const EditStudentModal = ({ student, sections, qualifications=[], canChangeGrade=false, onSave, onClose }) => {
+  const [form,setForm]=useState({
+    name:student.name||"", lrn:student.lrn||"", gender:student.gender||"Male",
+    birthday:student.birthday||"", address:student.address||"",
+    grade_level:student.grade_level, section_id:student.section_id||"",
+    tve_qualification:student.tve_qualification||"", shs_track:student.shs_track||"",
+  });
+  const [saving,setSaving]=useState(false);
+  const gradeLevel=parseInt(form.grade_level);
+  const needsTve=gradeLevel>=8&&gradeLevel<=10;
+  const isGrade11=gradeLevel===11, isGrade12=gradeLevel===12;
+  const tveOptions=(qualifications&&qualifications.length>0)?qualifications:TVE_QUALIFICATIONS_FALLBACK;
+  const availSections=sections.filter(s=>s.grade_level===gradeLevel);
+
+  const submit=async()=>{
+    if (!form.name.trim()||!form.lrn.trim()){alert("Name and LRN are required.");return;}
+    if (needsTve&&!form.tve_qualification){alert("Please select the TVE Qualification.");return;}
+    setSaving(true);
+    await onSave({
+      name:form.name.trim(), lrn:form.lrn.trim(), gender:form.gender,
+      birthday:form.birthday||null, address:form.address||null,
+      section_id:form.section_id||null,
+      tve_qualification:needsTve?form.tve_qualification:null,
+      shs_track:(isGrade11||isGrade12)?(form.shs_track||null):null,
+      grade_level:canChangeGrade?gradeLevel:undefined,
+    });
+    setSaving(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:250,
+      display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <Card style={{width:"100%",maxWidth:400,maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{fontSize:15,fontWeight:800,color:T.green1,marginBottom:4}}>✏️ Edit Learner</div>
+        <div style={{fontSize:11,color:T.textMuted,marginBottom:12}}>
+          Correct any encoding errors below, then save.
+        </div>
+        <div style={{display:"grid",gap:8,marginBottom:8}}>
+          <input placeholder="Full Name *" value={form.name}
+            onChange={e=>setForm(p=>({...p,name:e.target.value}))}/>
+          <input placeholder="LRN (12 digits) *" value={form.lrn} maxLength={12}
+            onChange={e=>setForm(p=>({...p,lrn:e.target.value}))}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <select value={form.gender} onChange={e=>setForm(p=>({...p,gender:e.target.value}))}>
+              <option>Male</option><option>Female</option>
+            </select>
+            <input type="date" value={form.birthday}
+              onChange={e=>setForm(p=>({...p,birthday:e.target.value}))}/>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            {canChangeGrade?(
+              <select value={form.grade_level}
+                onChange={e=>setForm(p=>({...p,grade_level:e.target.value,section_id:"",
+                  tve_qualification:"",shs_track:""}))}>
+                {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
+              </select>
+            ):(
+              <div style={{fontSize:12,color:T.textMuted,display:"flex",alignItems:"center",padding:"0 4px"}}>
+                Grade {gradeLevel} (fixed)
+              </div>
+            )}
+            <select value={form.section_id}
+              onChange={e=>setForm(p=>({...p,section_id:e.target.value}))}>
+              <option value="">-- Section --</option>
+              {availSections.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          {needsTve&&(
+            <select value={form.tve_qualification}
+              onChange={e=>setForm(p=>({...p,tve_qualification:e.target.value}))}>
+              <option value="">-- TVE Qualification * --</option>
+              {tveOptions.map(q=><option key={q} value={q}>{q}</option>)}
+            </select>
+          )}
+          {(isGrade11||isGrade12)&&(
+            <input placeholder="SHS Track" value={form.shs_track}
+              onChange={e=>setForm(p=>({...p,shs_track:e.target.value}))}/>
+          )}
+          <input placeholder="Address" value={form.address}
+            onChange={e=>setForm(p=>({...p,address:e.target.value}))}/>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn onClick={submit} disabled={saving} style={{flex:1}}>
+            {saving?"⏳ Saving...":"💾 Save Changes"}
+          </Btn>
+          <Btn onClick={onClose} color="#e0e0e0" style={{flex:1,color:T.text}}>Cancel</Btn>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+const SectionGroup = ({ sectionName, adviserName, total, males, females, qualStats, children }) => {
+  const [open,setOpen]=useState(true);
+  return (
+    <div style={{marginBottom:12}}>
+      <div onClick={()=>setOpen(p=>!p)} style={{cursor:"pointer",fontSize:12,fontWeight:700,
+        color:T.green2,background:"#e8f5e9",padding:"6px 10px",borderRadius:6,
+        borderLeft:`3px solid ${T.green3}`,marginBottom:6,display:"flex",
+        justifyContent:"space-between",alignItems:"center",gap:8}}>
+        <span style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{fontSize:10}}>{open?"▼":"▶"}</span>
+          <span>Section: {sectionName}</span>
+        </span>
+        {adviserName&&<span style={{fontSize:10,color:T.textMuted,fontWeight:400}}>Adviser: {adviserName}</span>}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:open?8:0,paddingLeft:2}}>
+        <span style={{fontSize:10,fontWeight:700,color:T.text,background:"#fff",
+          border:"1px solid #c8e6c9",borderRadius:10,padding:"2px 8px"}}>
+          👥 Total: {total}
+        </span>
+        <span style={{fontSize:10,fontWeight:700,color:T.blue,background:"#fff",
+          border:"1px solid #b3c6e8",borderRadius:10,padding:"2px 8px"}}>
+          ♂ Male: {males}
+        </span>
+        <span style={{fontSize:10,fontWeight:700,color:"#c2185b",background:"#fff",
+          border:"1px solid #eab8cc",borderRadius:10,padding:"2px 8px"}}>
+          ♀ Female: {females}
+        </span>
+        {qualStats.map(g=>(
+          <span key={g.name} style={{fontSize:10,fontWeight:700,color:"#7b1fa2",background:"#fff",
+            border:"1px solid #d8b8d8",borderRadius:10,padding:"2px 8px"}}>
+            🎯 {g.name}: {g.count}
+          </span>
+        ))}
+      </div>
+      {open&&children}
+    </div>
+  );
+};
+
+const StudentListGrouped = ({ students, sections, teachers, showActions, onDelete, onReset, onReassign, onEdit, qualifications=[] }) => (
   <div>
     {GRADE_LEVELS.map(gl=>{
       const gradeSections=sections.filter(s=>s.grade_level===gl);
@@ -501,7 +687,7 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
                         <span>♂</span><span>Male ({males.length})</span>
                       </div>
                       {males.map(s=><StudentCard key={s.id} student={s} sections={sections}
-                        showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
+                        showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign} onEdit={onEdit}/>)}
                     </div>
                   )}
                   {females.length>0&&(
@@ -511,7 +697,7 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
                         <span>♀</span><span>Female ({females.length})</span>
                       </div>
                       {females.map(s=><StudentCard key={s.id} student={s} sections={sections}
-                        showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>)}
+                        showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign} onEdit={onEdit}/>)}
                     </div>
                   )}
                 </>
@@ -533,14 +719,18 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
                 })).filter(g=>g.list.length>0)
               :null;
 
+            const males=secStudents.filter(s=>s.gender==="Male").length;
+            const females=secStudents.filter(s=>s.gender==="Female").length;
+            const qualStats=isTveGrade
+              ?qualifications.map(qName=>({
+                  name:qName,
+                  count:secStudents.filter(s=>s.tve_qualification===qName).length,
+                })).filter(g=>g.count>0)
+              :[];
+
             return (
-              <div key={sec.id} style={{marginBottom:12}}>
-                <div style={{fontSize:12,fontWeight:700,color:T.green2,background:"#e8f5e9",
-                  padding:"4px 10px",borderRadius:6,borderLeft:`3px solid ${T.green3}`,
-                  marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span>Section: {sec.name}</span>
-                  {adviser&&<span style={{fontSize:10,color:T.textMuted}}>Adviser: {adviser.name}</span>}
-                </div>
+              <SectionGroup key={sec.id} sectionName={sec.name} adviserName={adviser?.name}
+                total={secStudents.length} males={males} females={females} qualStats={qualStats}>
                 {qualGroups?(
                   qualGroups.map(g=>(
                     <div key={g.name} style={{marginBottom:10,marginLeft:4,paddingLeft:8,
@@ -553,7 +743,7 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
                     </div>
                   ))
                 ):renderGenderGroups(secStudents)}
-              </div>
+              </SectionGroup>
             );
           })}
           {gradeStudents.filter(s=>!s.section_id).length>0&&(
@@ -563,7 +753,7 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
               </div>
               {gradeStudents.filter(s=>!s.section_id).map(s=>
                 <StudentCard key={s.id} student={s} sections={sections}
-                  showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign}/>
+                  showActions={showActions} onDelete={onDelete} onReset={onReset} onReassign={onReassign} onEdit={onEdit}/>
               )}
             </div>
           )}
@@ -573,7 +763,7 @@ const StudentListGrouped = ({ students, sections, teachers, showActions, onDelet
   </div>
 );
 
-const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onReassign }) => {
+const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onReassign, onEdit }) => {
   const [expand,setExpand]=useState(false);
   const sec=sections.find(x=>x.id===s.section_id);
   return (
@@ -588,12 +778,18 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
             {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
           </div>
         </div>
-        {showActions&&(
+        {(showActions||onEdit)&&(
           <div style={{display:"flex",gap:4,flexShrink:0}}>
-            <Btn color={T.blue} style={{padding:"5px 8px",fontSize:11}}
-              onClick={()=>onReset({userId:s.id,name:s.name,role:"student"})}>🔑</Btn>
-            <Btn color={T.red} style={{padding:"5px 8px",fontSize:11}}
-              onClick={()=>onDelete(s.id)}>🗑️</Btn>
+            {onEdit&&(
+              <Btn color={T.green3} style={{padding:"5px 8px",fontSize:11}}
+                onClick={()=>onEdit(s)}>✏️</Btn>
+            )}
+            {showActions&&<>
+              <Btn color={T.blue} style={{padding:"5px 8px",fontSize:11}}
+                onClick={()=>onReset({userId:s.id,name:s.name,role:"student"})}>🔑</Btn>
+              <Btn color={T.red} style={{padding:"5px 8px",fontSize:11}}
+                onClick={()=>onDelete(s.id)}>🗑️</Btn>
+            </>}
           </div>
         )}
       </div>
@@ -729,7 +925,7 @@ const Login = () => {
 
   return (
     <div style={{minHeight:"100vh",
-      background:"linear-gradient(160deg,#f6f4ec 0%,#f1eee0 50%,#ece7d5 100%)",
+      background:"linear-gradient(160deg,#e8f5e2 0%,#f0f7ee 50%,#e1f0e1 100%)",
       display:"flex",flexDirection:"column"}}>
       <SchoolHeader/>
       <div style={{flex:1,display:"flex",flexDirection:"column",
@@ -876,14 +1072,10 @@ const StudentDashboard = ({ profile, onLogout }) => {
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
-      <Toast msg={toast}/>
-      <div style={{flex:1,display:"flex",minHeight:0}}>
-        <SideNav
-          tabs={[["👤","Profile","profile"],["📊","Grades","grades"],["📅","Appt","appointment"]]}
-          active={tab} setActive={setTab} onLogout={onLogout}
-          name={profile.name}
-          sub={`Grade ${profile.grade_level}${section?" – "+section.name:""} · LRN: ${profile.lrn}`}/>
-        <div style={{flex:1,overflowY:"auto",padding:14}}>
+      <TopBar name={profile.name}
+        sub={`Grade ${profile.grade_level}${section?" – "+section.name:""} · LRN: ${profile.lrn}`}
+        onLogout={onLogout}/>
+      <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
 
         {tab==="profile"&&(
           <div>
@@ -1099,8 +1291,11 @@ const StudentDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
-        </div>
       </div>
+      <BottomNav
+        tabs={[["👤","Profile","profile"],["📊","Grades","grades"],["📅","Appt","appointment"]]}
+        active={tab} setActive={setTab}/>
+      <Toast msg={toast}/>
     </div>
   );
 };
@@ -1115,6 +1310,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [appointments,setAppointments]=useState([]);
   const [selSubject,setSelSubject]=useState("");
   const [selTerm,setSelTerm]=useState(1);
+  const [selSection,setSelSection]=useState("");
   const [localGrades,setLocalGrades]=useState({});
   const [dbGrades,setDbGrades]=useState([]);
   const [calendar,setCalendar]=useState([]);
@@ -1133,7 +1329,8 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [allGradeSubjects,setAllGradeSubjects]=useState([]);
   const [summaryTerm,setSummaryTerm]=useState(1); // 1, 2, 3, or "final" — for My Class grade summary
   const [qualifications,setQualifications]=useState([]); // admin-managed TVE qualification names
-  const [encodedStudents,setEncodedStudents]=useState([]); // students THIS curriculum head has added
+  const [chStudents,setChStudents]=useState([]); // Curriculum Head: all students in their assigned grade level
+  const [editStudent,setEditStudent]=useState(null); // Curriculum Head: learner being corrected
 
   const notify=m=>{setToast(m);setTimeout(()=>setToast(""),2500);};
 
@@ -1163,16 +1360,34 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     }
     const {data:allSec}=await supabase.from("sections").select("*");
     if (allSec) setSections(allSec);
-    if (profile.is_curriculum_head) {
-      const {data:encData}=await supabase.from("profiles").select("*")
-        .eq("role","student").eq("grade_level",profile.assigned_grade_level)
-        .eq("encoded_by",profile.id).order("name");
-      if (encData) setEncodedStudents(encData);
-    }
     setLoading(false);
-  },[profile.id,profile.is_curriculum_head,profile.assigned_grade_level]);
+  },[profile.id]);
 
   useEffect(()=>{fetchData();},[fetchData]);
+
+  // Curriculum Head: load every student in their assigned grade level (all
+  // sections), so they get a full per-section view — not just the ones
+  // they personally added.
+  const fetchChStudents=useCallback(async()=>{
+    if (!profile.is_curriculum_head) return;
+    const {data}=await supabase.from("profiles").select("*")
+      .eq("role","student").eq("grade_level",profile.assigned_grade_level)
+      .order("section_id").order("gender").order("name");
+    if (data) setChStudents(data);
+  },[profile.is_curriculum_head,profile.assigned_grade_level]);
+
+  useEffect(()=>{fetchChStudents();},[fetchChStudents]);
+
+  const handleUpdateStudent=async updates=>{
+    if (!editStudent) return;
+    // CH can never change grade level — EditStudentModal never includes it
+    // when canChangeGrade=false, so `updates` here is already safe to send as-is.
+    const result=await edgeCall("update-student",{studentId:editStudent.id,updates});
+    if (result.error){notify("❌ "+result.error);return;}
+    notify("✅ Learner updated!");
+    setEditStudent(null);
+    fetchChStudents();
+  };
 
   // Fetch data needed for the Honors tab and Grade Summary (My Class) —
   // both need class-wide grades, so share one fetch.
@@ -1192,18 +1407,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
         supabase.from("subjects").select("*").eq("grade_level",mySection.grade_level),
       ]);
       if (gR.data) setClassGrades(gR.data);
-      if (subR.data) {
-        // Honors "whole grade" scope aggregates across every section, so it needs
-        // every subject row for the grade. "My Class"/section scope should only
-        // show subjects that actually apply to THIS section (grade-wide shared
-        // subjects, or ones specifically assigned to this section) — otherwise
-        // other sections' same-named subjects (with different teachers) would
-        // show up as empty duplicate columns.
-        const scoped=(tab==="honors"&&honorsScope==="grade")
-          ?subR.data
-          :subR.data.filter(sub=>!sub.section_id||sub.section_id===mySection.id);
-        setAllGradeSubjects(scoped);
-      }
+      if (subR.data) setAllGradeSubjects(subR.data);
     })();
   },[tab,mySection,honorsScope,classStudents]);
 
@@ -1252,17 +1456,15 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   };
 
   useEffect(()=>{
-    if (!selSubject) return;
+    if (!selSubject||!selSection) { setStudents([]); return; }
     const sub=subjects.find(s=>s.id===selSubject);
     if (!sub) return;
     (async()=>{
-      // If this subject is tagged with a TVE qualification, only show students
-      // who are assigned that exact qualification — not the whole grade/class.
-      // If this subject is scoped to one section (section_id set), only show
-      // that section's students — not the whole grade level.
+      // Scope the roster to one section at a time (per-section encoding), and
+      // if this subject is tagged with a TVE qualification, only show students
+      // who are assigned that exact qualification within that section.
       let stuQuery=supabase.from("profiles").select("*")
-        .eq("role","student").eq("grade_level",sub.grade_level);
-      if (sub.section_id) stuQuery=stuQuery.eq("section_id",sub.section_id);
+        .eq("role","student").eq("grade_level",sub.grade_level).eq("section_id",selSection);
       if (sub.tve_qualification) stuQuery=stuQuery.eq("tve_qualification",sub.tve_qualification);
       const [stuR,gR]=await Promise.all([
         stuQuery.order("name"),
@@ -1271,7 +1473,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
       if (stuR.data) setStudents(stuR.data);
       if (gR.data) setDbGrades(gR.data);
     })();
-  },[selSubject,selTerm,subjects]);
+  },[selSubject,selSection,selTerm,subjects]);
 
   const getGradeVal=studentId=>{
     const key=`${studentId}-${selSubject}-${selTerm}`;
@@ -1379,6 +1581,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
       notify("✅ Student added!");
       await new Promise(r=>setTimeout(r,400));
       await fetchData();
+      await fetchChStudents();
     } catch (err) {
       notify("❌ "+(err.message||"Failed to add student."));
     } finally {
@@ -1464,37 +1667,38 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const tabs=[["✏️","Encode","encode"],["📅","Appts","appointments"]];
   if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"],
     ["🏆","Honors","honors"],["📄","SF9","reports"]);
-  if (profile.is_curriculum_head) tabs.push(["➕","Students","addstudents"]);
+  if (profile.is_curriculum_head) tabs.push(["🎓","Students","chstudents"]);
 
   if (loading) return <Spinner/>;
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
+      <TopBar name={profile.name}
+        sub={`Teacher${mySection?" · Adviser: "+mySection.name:""}${profile.is_curriculum_head?" · Curriculum Head Gr."+profile.assigned_grade_level:""}`}
+        onLogout={onLogout}/>
       <Toast msg={toast}/>
-      <div style={{flex:1,display:"flex",minHeight:0}}>
-        <SideNav tabs={tabs} active={tab} setActive={setTab} onLogout={onLogout}
-          name={profile.name}
-          sub={`Teacher${mySection?" · Adviser: "+mySection.name:""}${profile.is_curriculum_head?" · Curriculum Head Gr."+profile.assigned_grade_level:""}`}/>
-        <div style={{flex:1,overflowY:"auto",padding:14}}>
+      {editStudent&&(
+        <EditStudentModal student={editStudent}
+          sections={sections.filter(s=>s.grade_level===profile.assigned_grade_level)}
+          qualifications={qualifications} canChangeGrade={false}
+          onSave={handleUpdateStudent} onClose={()=>setEditStudent(null)}/>
+      )}
+      <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
 
         {tab==="encode"&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>✏️ Encode Grades</div>
             <Card style={{marginBottom:12}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                 <div>
                   <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Subject</label>
-                  <select value={selSubject} onChange={e=>setSelSubject(e.target.value)}>
+                  <select value={selSubject}
+                    onChange={e=>{setSelSubject(e.target.value);setSelSection("");}}>
                     <option value="">-- Select --</option>
-                    {subjects.map(s=>{
-                      const secName=s.section_id
-                        ?sections.find(sec=>sec.id===s.section_id)?.name
-                        :null;
-                      return <option key={s.id} value={s.id}>
-                        {s.name} (Gr.{s.grade_level}{secName?` · Sec. ${secName}`:""}{s.tve_qualification?` · ${s.tve_qualification}`:""})
-                      </option>;
-                    })}
+                    {subjects.map(s=><option key={s.id} value={s.id}>
+                      {s.name} (Gr.{s.grade_level}{s.tve_qualification?` · ${s.tve_qualification}`:""})
+                    </option>)}
                   </select>
                 </div>
                 <div>
@@ -1505,11 +1709,26 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                   </select>
                 </div>
               </div>
+              {selSubject&&(()=>{
+                const sub=subjects.find(s=>s.id===selSubject);
+                const secOptions=sections.filter(s=>s.grade_level===sub?.grade_level);
+                return (
+                  <div>
+                    <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>
+                      Section — encode one section at a time for easier monitoring
+                    </label>
+                    <select value={selSection} onChange={e=>setSelSection(e.target.value)}>
+                      <option value="">-- Select Section --</option>
+                      {secOptions.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                );
+              })()}
             </Card>
-            {selSubject?(
+            {selSubject&&selSection?(
               <Card>
                 <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:2}}>
-                  {subjects.find(s=>s.id===selSubject)?.name} — Term {selTerm}
+                  {subjects.find(s=>s.id===selSubject)?.name} — {sections.find(s=>s.id===selSection)?.name} — Term {selTerm}
                 </div>
                 {subjects.find(s=>s.id===selSubject)?.tve_qualification&&(
                   <div style={{fontSize:11,color:T.textMuted,marginBottom:8}}>
@@ -1521,7 +1740,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 {students.length===0
                   ?<div style={{textAlign:"center",color:T.gray,padding:20}}>
                       No students found{subjects.find(s=>s.id===selSubject)?.tve_qualification
-                        ?" for this TVE qualification.":"."}
+                        ?" for this TVE qualification in this section.":" in this section."}
                     </div>
                   :students.map(s=>(
                     <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,
@@ -1540,7 +1759,9 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 <Btn onClick={saveGrades} style={{width:"100%",marginTop:12}}>💾 Save Grades</Btn>
               </Card>
             ):(
-              <Card><div style={{textAlign:"center",color:T.gray,padding:20}}>Select a subject to begin encoding.</div></Card>
+              <Card><div style={{textAlign:"center",color:T.gray,padding:20}}>
+                {selSubject?"Select a section to begin encoding.":"Select a subject to begin encoding."}
+              </div></Card>
             )}
           </div>
         )}
@@ -1551,6 +1772,10 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
               {mySection.name} · Grade {mySection.grade_level} · {classStudents.length} students
             </div>
+
+            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:8}}>📈 Grade Encoding Progress</div>
+            <EncodingProgressCard
+              result={computeSectionEncoding(mySection,allGradeSubjects,classStudents,classGrades)}/>
 
             <Card style={{marginBottom:14}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -1721,54 +1946,20 @@ const TeacherDashboard = ({ profile, onLogout }) => {
           </div>
         )}
 
-        {tab==="addstudents"&&profile.is_curriculum_head&&(
+        {tab==="chstudents"&&profile.is_curriculum_head&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>
-              ➕ Add Students — Grade {profile.assigned_grade_level}
+              🎓 Students — Grade {profile.assigned_grade_level}
             </div>
             <AddStudentForm sections={sections} gradeFilter={profile.assigned_grade_level}
               onAdd={handleAddStudent} loading={addingStudent} qualifications={qualifications}/>
-
-            <div style={{fontSize:14,fontWeight:700,color:T.green1,margin:"18px 0 10px"}}>
-              📋 Students You've Encoded ({encodedStudents.length})
-            </div>
-            {encodedStudents.length===0
-              ?<Card><div style={{textAlign:"center",color:T.gray,padding:10}}>
-                  You haven't added any students yet.
-                </div></Card>
-              :sections.filter(sec=>sec.grade_level===parseInt(profile.assigned_grade_level))
-                .map(sec=>{
-                  const secStudents=encodedStudents.filter(s=>s.section_id===sec.id);
-                  if (!secStudents.length) return null;
-                  return (
-                    <div key={sec.id} style={{marginBottom:10}}>
-                      <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green2,
-                        padding:"4px 10px",borderRadius:6,marginBottom:6}}>
-                        🏫 {sec.name} ({secStudents.length})
-                      </div>
-                      {secStudents.map(s=>(
-                        <Card key={s.id} style={{marginBottom:6,padding:"8px 12px"}}>
-                          <div style={{fontWeight:600,fontSize:13,color:T.text}}>{s.name}</div>
-                          <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn}</div>
-                        </Card>
-                      ))}
-                    </div>
-                  );
-                })}
-            {encodedStudents.filter(s=>!s.section_id).length>0&&(
-              <div style={{marginBottom:10}}>
-                <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.gray,
-                  padding:"4px 10px",borderRadius:6,marginBottom:6}}>
-                  No Section Assigned ({encodedStudents.filter(s=>!s.section_id).length})
-                </div>
-                {encodedStudents.filter(s=>!s.section_id).map(s=>(
-                  <Card key={s.id} style={{marginBottom:6,padding:"8px 12px"}}>
-                    <div style={{fontWeight:600,fontSize:13,color:T.text}}>{s.name}</div>
-                    <div style={{fontSize:11,color:T.textMuted}}>LRN: {s.lrn}</div>
-                  </Card>
-                ))}
-              </div>
-            )}
+            {chStudents.length===0
+              ?<Card><div style={{textAlign:"center",color:T.gray,padding:20}}>No students yet.</div></Card>
+              :<StudentListGrouped students={chStudents}
+                  sections={sections.filter(s=>s.grade_level===profile.assigned_grade_level)}
+                  teachers={[]} showActions={false}
+                  onEdit={s=>setEditStudent(s)} qualifications={qualifications}/>
+            }
           </div>
         )}
 
@@ -1940,8 +2131,8 @@ const TeacherDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
-        </div>
       </div>
+      <BottomNav tabs={tabs} active={tab} setActive={setTab}/>
     </div>
   );
 };
@@ -1959,6 +2150,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
   const [editGrade,setEditGrade]=useState(null);
+  const [editStudent,setEditStudent]=useState(null);
   const [resetModal,setResetModal]=useState(null);
   const [addingStudent,setAddingStudent]=useState(false);
   const [qualifications,setQualifications]=useState([]); // [{id,name}] — admin-managed TVE qualifications
@@ -1971,7 +2163,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [applyingPass,setApplyingPass]=useState(false);
 
   const [nTeacher,setNTeacher]=useState({name:"",email:"",password:""});
-  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:"",tve_qualification:"",section_id:""});
+  const [nSubject,setNSubject]=useState({name:"",grade_level:7,teacher_id:"",tve_qualification:""});
   const [nGrade,setNGrade]=useState({student_id:"",subject_id:"",term:1,grade:""});
   const [nSection,setNSection]=useState({name:"",grade_level:7,adviser_id:""});
 
@@ -2089,6 +2281,16 @@ const AdminDashboard = ({ profile, onLogout }) => {
     notify("✅ Section reassigned!"); fetchAll();
   };
 
+  const handleUpdateStudent=async updates=>{
+    if (!editStudent) return;
+    const {grade_level,...rest}=updates;
+    const result=await edgeCall("update-student",{studentId:editStudent.id,updates:rest,grade_level});
+    if (result.error){notify("❌ "+result.error);return;}
+    notify("✅ Learner updated!");
+    setEditStudent(null);
+    fetchAll();
+  };
+
   // ── TEACHERS ──
   const addTeacher=async()=>{
     if (!nTeacher.name||!nTeacher.email||!nTeacher.password){
@@ -2129,14 +2331,12 @@ const AdminDashboard = ({ profile, onLogout }) => {
   // ── SUBJECTS ──
   const addSubject=async()=>{
     if (!nSubject.name){notify("❌ Subject name required.");return;}
-    if (!nSubject.section_id){notify("❌ Please choose a Section (or 'All Sections').");return;}
     const {error}=await supabase.from("subjects").insert({
       name:nSubject.name,grade_level:parseInt(nSubject.grade_level),teacher_id:nSubject.teacher_id||null,
       tve_qualification:nSubject.tve_qualification||null,
-      section_id:nSubject.section_id==="__ALL__"?null:nSubject.section_id,
     });
     if (error){notify("❌ "+error.message);return;}
-    setNSubject({name:"",grade_level:7,teacher_id:"",tve_qualification:"",section_id:""});
+    setNSubject({name:"",grade_level:7,teacher_id:"",tve_qualification:""});
     notify("✅ Subject added!"); fetchAll();
   };
 
@@ -2149,15 +2349,6 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const reassignTeacher=async(subId,teacherId)=>{
     await supabase.from("subjects").update({teacher_id:teacherId||null}).eq("id",subId);
     notify("✅ Teacher reassigned!"); fetchAll();
-  };
-
-  // section_id === null means "applies to every section in this grade level"
-  // (the old, un-split behavior). Setting it scopes this subject/teacher
-  // to one specific section only — so the same subject name can have a
-  // different row (and a different teacher) per section.
-  const reassignSubjectSection=async(subId,sectionId)=>{
-    await supabase.from("subjects").update({section_id:sectionId||null}).eq("id",subId);
-    notify("✅ Section updated!"); fetchAll();
   };
 
   const reassignQualification=async(subId,qualName)=>{
@@ -2273,11 +2464,17 @@ const AdminDashboard = ({ profile, onLogout }) => {
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <SchoolHeader small/>
+      <TopBar name="Admin Panel" sub={profile.name} onLogout={onLogout}/>
       <Toast msg={toast}/>
 
       {resetModal&&(
         <ResetPasswordModal user={resetModal}
           onConfirm={handleResetPassword} onClose={()=>setResetModal(null)}/>
+      )}
+      {editStudent&&(
+        <EditStudentModal student={editStudent} sections={sections}
+          qualifications={qualifications.map(q=>q.name)} canChangeGrade={true}
+          onSave={handleUpdateStudent} onClose={()=>setEditStudent(null)}/>
       )}
       {editGrade&&(
         <div style={{position:"fixed",inset:0,background:"#00000066",zIndex:200,
@@ -2298,18 +2495,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
         </div>
       )}
 
-      <div style={{flex:1,display:"flex",minHeight:0}}>
-        <SideNav
-          tabs={[
-            ["📊","Overview","overview"],["⚙️","Settings","settings"],
-            ["🎓","Students","students"],["👨‍🏫","Teachers","teachers"],
-            ["🏫","Sections","sections"],["📚","Subjects","subjects"],
-            ["📝","Grades","grades"],["📅","Calendar","calendar"],
-            ["🗓️","Appts","appointments"],
-          ]}
-          active={tab} setActive={setTab} onLogout={onLogout}
-          name="Admin Panel" sub={profile.name}/>
-        <div style={{flex:1,overflowY:"auto",padding:14}}>
+      <div style={{flex:1,overflowY:"auto",padding:14,paddingBottom:72}}>
 
         {tab==="overview"&&(
           <div>
@@ -2325,6 +2511,30 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 </Card>
               ))}
             </div>
+
+            <div style={{fontSize:14,fontWeight:700,color:T.green1,margin:"18px 0 10px"}}>
+              📈 Grade Encoding Progress
+            </div>
+            {sections.length===0
+              ?<Card><div style={{textAlign:"center",color:T.gray,padding:16}}>No sections yet.</div></Card>
+              :GRADE_LEVELS.map(gl=>{
+                const glSections=sections.filter(s=>s.grade_level===gl);
+                if (!glSections.length) return null;
+                return (
+                  <div key={gl} style={{marginBottom:12}}>
+                    <div style={{fontSize:12,fontWeight:800,color:T.white,background:T.green1,
+                      padding:"6px 12px",borderRadius:8,marginBottom:8}}>
+                      Grade {gl}
+                    </div>
+                    {glSections.map(sec=>(
+                      <EncodingProgressCard key={sec.id}
+                        result={computeSectionEncoding(sec,subjects,students,grades)}/>
+                    ))}
+                  </div>
+                );
+              })
+            }
+
             <Card style={{padding:12}}>
               <div style={{display:"flex",height:8,borderRadius:6,overflow:"hidden",marginBottom:8}}>
                 <div style={{flex:1,background:T.blue}}/><div style={{flex:1,background:T.red}}/>
@@ -2468,6 +2678,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
             <StudentListGrouped students={students} sections={sections} teachers={teachers}
               showActions={true} onDelete={delStudent}
               onReset={u=>setResetModal(u)} onReassign={reassignSection}
+              onEdit={s=>setEditStudent(s)}
               qualifications={qualifications.map(q=>q.name)}/>
           </div>
         )}
@@ -2639,28 +2850,16 @@ const AdminDashboard = ({ profile, onLogout }) => {
                   onChange={e=>setNSubject(p=>({...p,name:e.target.value}))}/>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nSubject.grade_level}
-                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,section_id:"",
+                    onChange={e=>setNSubject(p=>({...p,grade_level:e.target.value,
                       tve_qualification:(parseInt(e.target.value)>=8&&parseInt(e.target.value)<=10)
                         ?p.tve_qualification:""}))}>
                     {GRADE_LEVELS.map(g=><option key={g} value={g}>Grade {g}</option>)}
                   </select>
-                  <select value={nSubject.section_id}
-                    onChange={e=>setNSubject(p=>({...p,section_id:e.target.value}))}>
-                    <option value="">-- Section --</option>
-                    {sections.filter(sec=>sec.grade_level===parseInt(nSubject.grade_level))
-                      .map(sec=><option key={sec.id} value={sec.id}>{sec.name}</option>)}
-                    <option value="__ALL__">All Sections (shared)</option>
+                  <select value={nSubject.teacher_id}
+                    onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
+                    <option value="">-- Teacher (opt) --</option>
+                    {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                   </select>
-                </div>
-                <select value={nSubject.teacher_id}
-                  onChange={e=>setNSubject(p=>({...p,teacher_id:e.target.value}))}>
-                  <option value="">-- Teacher assigned to this Grade + Section --</option>
-                  {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-                </select>
-                <div style={{fontSize:10,color:T.textMuted,marginTop:-4}}>
-                  💡 Pick the specific Section this teacher handles. To give the same subject a
-                  different teacher for another section, add it again choosing that section.
-                  "All Sections" only applies if one teacher truly covers the whole grade level.
                 </div>
                 {parseInt(nSubject.grade_level)>=8&&parseInt(nSubject.grade_level)<=10&&(
                   <select value={nSubject.tve_qualification}
@@ -2676,46 +2875,28 @@ const AdminDashboard = ({ profile, onLogout }) => {
               const subs=subjects.filter(s=>s.grade_level===gl);
               if (!subs.length) return null;
               const isTveGrade=gl>=8&&gl<=10;
-              const gradeSections=sections.filter(sec=>sec.grade_level===gl);
               return (
                 <div key={gl} style={{marginBottom:12}}>
                   <div style={{fontSize:12,fontWeight:700,color:T.white,background:T.green1,
                     padding:"4px 10px",borderRadius:6,marginBottom:6}}>Grade {gl}</div>
-                  {subs.map(s=>{
-                    const sectionName=s.section_id
-                      ?(gradeSections.find(sec=>sec.id===s.section_id)?.name||"Unknown Section")
-                      :null;
-                    return (
+                  {subs.map(s=>(
                     <Card key={s.id} style={{marginBottom:6,padding:"10px 12px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",
                         alignItems:"center",marginBottom:6}}>
                         <div>
                           <div style={{fontWeight:700,fontSize:13,color:T.text}}>{s.name}</div>
-                          <div style={{display:"flex",gap:4,marginTop:2}}>
-                            <Badge text={sectionName?`Section: ${sectionName}`:"All Sections"}
-                              color={sectionName?T.green2:T.gray}/>
-                            {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
-                          </div>
+                          {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
                         </div>
                         <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
                           onClick={()=>delSubject(s.id)}>🗑️</Btn>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isTveGrade?8:0}}>
                         <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Teacher:</div>
                         <select value={s.teacher_id||""}
                           onChange={e=>reassignTeacher(s.id,e.target.value)}
                           style={{fontSize:12,padding:"5px 8px"}}>
                           <option value="">-- Unassigned --</option>
                           {teachers.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:isTveGrade?8:0}}>
-                        <div style={{fontSize:11,color:T.textMuted,flexShrink:0}}>Section:</div>
-                        <select value={s.section_id||""}
-                          onChange={e=>reassignSubjectSection(s.id,e.target.value)}
-                          style={{fontSize:12,padding:"5px 8px"}}>
-                          <option value="">-- All Sections (shared) --</option>
-                          {gradeSections.map(sec=><option key={sec.id} value={sec.id}>{sec.name}</option>)}
                         </select>
                       </div>
                       {isTveGrade&&(
@@ -2730,7 +2911,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
                         </div>
                       )}
                     </Card>
-                  );})}
+                  ))}
                 </div>
               );
             })}
@@ -2753,12 +2934,9 @@ const AdminDashboard = ({ profile, onLogout }) => {
                 <select value={nGrade.subject_id}
                   onChange={e=>setNGrade(p=>({...p,subject_id:e.target.value}))}>
                   <option value="">-- Select Subject --</option>
-                  {subjects.map(s=>{
-                    const secName=s.section_id?sections.find(sec=>sec.id===s.section_id)?.name:null;
-                    return <option key={s.id} value={s.id}>
-                      {s.name} (Gr.{s.grade_level}{secName?` · Sec. ${secName}`:""}{s.tve_qualification?` · ${s.tve_qualification}`:""})
-                    </option>;
-                  })}
+                  {subjects.map(s=><option key={s.id} value={s.id}>
+                    {s.name} (Gr.{s.grade_level}{s.tve_qualification?` · ${s.tve_qualification}`:""})
+                  </option>)}
                 </select>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                   <select value={nGrade.term} onChange={e=>setNGrade(p=>({...p,term:e.target.value}))}>
@@ -2834,8 +3012,17 @@ const AdminDashboard = ({ profile, onLogout }) => {
             }
           </div>
         )}
-        </div>
       </div>
+
+      <BottomNav
+        tabs={[
+          ["📊","Overview","overview"],["⚙️","Settings","settings"],
+          ["🎓","Students","students"],["👨‍🏫","Teachers","teachers"],
+          ["🏫","Sections","sections"],["📚","Subjects","subjects"],
+          ["📝","Grades","grades"],["📅","Calendar","calendar"],
+          ["🗓️","Appts","appointments"],
+        ]}
+        active={tab} setActive={setTab}/>
     </div>
   );
 };
