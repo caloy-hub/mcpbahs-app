@@ -20,19 +20,37 @@ import mcpbahsLogo from "./mcpbahs-logo.png";
 const GRADE_LEVELS = [7, 8, 9, 10, 11, 12];
 
 const TERM_MONTHS = [
-  { month:6,  year:2026, term:1, label:"June 2026" },
+  { month:6,  year:2026, term:1, label:"June 2026",           startDay:8 },
   { month:7,  year:2026, term:1, label:"July 2026" },
   { month:8,  year:2026, term:1, label:"August 2026" },
-  { month:9,  year:2026, term:1, label:"Sept 1–15, 2026" },
-  { month:9,  year:2026, term:2, label:"Sept 16–30, 2026" },
+  { month:9,  year:2026, term:1, label:"Sept 1–15, 2026",     endDay:15 },
+  { month:9,  year:2026, term:2, label:"Sept 16–30, 2026",    startDay:16 },
   { month:10, year:2026, term:2, label:"October 2026" },
   { month:11, year:2026, term:2, label:"November 2026" },
-  { month:12, year:2026, term:2, label:"December 2026" },
-  { month:1,  year:2027, term:3, label:"January 2027" },
+  { month:12, year:2026, term:2, label:"December 2026",       endDay:18 },
+  { month:1,  year:2027, term:3, label:"January 2027",        startDay:4 },
   { month:2,  year:2027, term:3, label:"February 2027" },
   { month:3,  year:2027, term:3, label:"March 2027" },
-  { month:4,  year:2027, term:3, label:"April 2027" },
+  { month:4,  year:2027, term:3, label:"April 2027",          endDay:8 },
 ];
+
+// The actual school-day dates within one TERM_MONTHS entry: every weekday
+// (Mon–Fri) in the entry's day range, minus any date the admin has marked
+// as a non-school day (holiday/suspension). This is what drives the SF2
+// daily attendance grid — a real calendar, not just a manually-typed count.
+const schoolDaysInMonth = (tm, holidays=[]) => {
+  const daysInMonth = new Date(tm.year, tm.month, 0).getDate();
+  const start = tm.startDay || 1, end = tm.endDay || daysInMonth;
+  const out = [];
+  for (let d=start; d<=end; d++) {
+    const dow = new Date(tm.year, tm.month-1, d).getDay(); // 0=Sun..6=Sat
+    if (dow===0||dow===6) continue;
+    const iso = `${tm.year}-${String(tm.month).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    if (holidays.some(h=>h.date===iso)) continue;
+    out.push({date:iso, day:d, dow});
+  }
+  return out;
+};
 
 const T = {
   bg:"#f0f7ee", bgCard:"#ffffff", bgPanel:"#e8f5e2",
@@ -532,6 +550,7 @@ const EditStudentModal = ({ student, sections, qualifications=[], canChangeGrade
     birthday:student.birthday||"", address:student.address||"",
     grade_level:student.grade_level, section_id:student.section_id||"",
     tve_qualification:student.tve_qualification||"", shs_track:student.shs_track||"",
+    enrollment_status:student.enrollment_status||"Active", status_date:student.status_date||"",
   });
   const [saving,setSaving]=useState(false);
   const gradeLevel=parseInt(form.grade_level);
@@ -543,6 +562,9 @@ const EditStudentModal = ({ student, sections, qualifications=[], canChangeGrade
   const submit=async()=>{
     if (!form.name.trim()||!form.lrn.trim()){alert("Name and LRN are required.");return;}
     if (needsTve&&!form.tve_qualification){alert("Please select the TVE Qualification.");return;}
+    if (form.enrollment_status!=="Active"&&!form.status_date){
+      alert("Please set the date for this status (needed for School Form 4).");return;
+    }
     setSaving(true);
     await onSave({
       name:form.name.trim(), lrn:form.lrn.trim(), gender:form.gender,
@@ -551,6 +573,8 @@ const EditStudentModal = ({ student, sections, qualifications=[], canChangeGrade
       tve_qualification:needsTve?form.tve_qualification:null,
       shs_track:(isGrade11||isGrade12)?(form.shs_track||null):null,
       grade_level:canChangeGrade?gradeLevel:undefined,
+      enrollment_status:form.enrollment_status,
+      status_date:form.enrollment_status==="Active"?null:form.status_date,
     });
     setSaving(false);
   };
@@ -606,6 +630,25 @@ const EditStudentModal = ({ student, sections, qualifications=[], canChangeGrade
           )}
           <input placeholder="Address" value={form.address}
             onChange={e=>setForm(p=>({...p,address:e.target.value}))}/>
+
+          <div style={{borderTop:"1px solid #e0f0e0",paddingTop:8,marginTop:2}}>
+            <label style={{fontSize:11,color:T.textMuted,display:"block",marginBottom:4}}>
+              Enrollment Status — used in School Form 4
+            </label>
+            <div style={{display:"grid",gridTemplateColumns:form.enrollment_status==="Active"?"1fr":"1fr 1fr",gap:8}}>
+              <select value={form.enrollment_status}
+                onChange={e=>setForm(p=>({...p,enrollment_status:e.target.value}))}>
+                <option>Active</option>
+                <option>Transferred In</option>
+                <option>Transferred Out</option>
+                <option>Dropped Out</option>
+              </select>
+              {form.enrollment_status!=="Active"&&(
+                <input type="date" value={form.status_date}
+                  onChange={e=>setForm(p=>({...p,status_date:e.target.value}))}/>
+              )}
+            </div>
+          </div>
         </div>
         <div style={{display:"flex",gap:8}}>
           <Btn onClick={submit} disabled={saving} style={{flex:1}}>
@@ -777,6 +820,8 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
             {sec&&<span>{sec.name}</span>}
             <Badge text={s.gender} color={s.gender==="Male"?T.blue:"#c2185b"}/>
             {s.tve_qualification&&<Badge text={s.tve_qualification} color="#7b1fa2"/>}
+            {s.enrollment_status&&s.enrollment_status!=="Active"&&
+              <Badge text={s.enrollment_status} color={T.red}/>}
           </div>
         </div>
         {(showActions||onEdit)&&(
@@ -823,7 +868,7 @@ const StudentCard = ({ student:s, sections, showActions, onDelete, onReset, onRe
 };
 
 // ─── SCHOOL CALENDAR PANEL (fixed — no hooks in map) ────
-const CalendarPanel = ({ calendar, onSave }) => {
+const CalendarPanel = ({ calendar, onSave, holidays=[], onAddHoliday, onDeleteHoliday }) => {
   const [daysMap, setDaysMap] = useState(() => {
     const m = {};
     TERM_MONTHS.forEach(tm => {
@@ -832,6 +877,8 @@ const CalendarPanel = ({ calendar, onSave }) => {
     });
     return m;
   });
+  const [holDate,setHolDate]=useState("");
+  const [holLabel,setHolLabel]=useState("");
 
   // Sync calendar data into daysMap when it loads
   useEffect(() => {
@@ -888,6 +935,46 @@ const CalendarPanel = ({ calendar, onSave }) => {
           </div>
         );
       })}
+
+      {onAddHoliday&&(
+        <div style={{marginTop:20}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.green1,marginBottom:4}}>
+            🚫 Non-School Days (Holidays / Suspensions)
+          </div>
+          <div style={{fontSize:12,color:T.textMuted,marginBottom:10}}>
+            These dates are automatically skipped in the Daily Attendance grid and School Form 2.
+          </div>
+          <Card style={{marginBottom:10}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <input type="date" style={{flex:"1 1 150px"}} value={holDate}
+                onChange={e=>setHolDate(e.target.value)}/>
+              <input placeholder="Label (e.g. Araw ng Kagitingan)" style={{flex:"2 1 200px"}}
+                value={holLabel} onChange={e=>setHolLabel(e.target.value)}/>
+              <Btn onClick={()=>{
+                if (!holDate){return;}
+                onAddHoliday(holDate,holLabel||"Holiday");
+                setHolDate("");setHolLabel("");
+              }} style={{flexShrink:0}}>➕ Add</Btn>
+            </div>
+          </Card>
+          {holidays.length===0
+            ?<Card><div style={{textAlign:"center",color:T.gray,padding:14,fontSize:12}}>
+                No non-school days added yet.
+              </div></Card>
+            :[...holidays].sort((a,b)=>a.date.localeCompare(b.date)).map(h=>(
+              <Card key={h.id} style={{marginBottom:6,padding:"8px 12px",display:"flex",
+                justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:T.text}}>{h.date}</div>
+                  <div style={{fontSize:11,color:T.textMuted}}>{h.label}</div>
+                </div>
+                <Btn color={T.red} style={{padding:"5px 10px",fontSize:11}}
+                  onClick={()=>onDeleteHoliday(h.id)}>🗑️</Btn>
+              </Card>
+            ))
+          }
+        </div>
+      )}
     </div>
   );
 };
@@ -1314,10 +1401,11 @@ const TeacherDashboard = ({ profile, onLogout }) => {
   const [selSection,setSelSection]=useState("");
   const [localGrades,setLocalGrades]=useState({});
   const [dbGrades,setDbGrades]=useState([]);
-  const [calendar,setCalendar]=useState([]);
-  const [attendance,setAttendance]=useState([]);
+  const [holidays,setHolidays]=useState([]);
   const [selAttMonth,setSelAttMonth]=useState(null);
-  const [localAtt,setLocalAtt]=useState({});
+  const [dailyAtt,setDailyAtt]=useState([]); // daily_attendance rows for the selected month
+  const [localDaily,setLocalDaily]=useState({}); // pending toggles: `${studentId}|${date}` -> 'present'|'absent'
+  const [savingAtt,setSavingAtt]=useState(false);
   const [sections,setSections]=useState([]);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
@@ -1337,27 +1425,22 @@ const TeacherDashboard = ({ profile, onLogout }) => {
 
   const fetchData=useCallback(async()=>{
     setLoading(true);
-    const [sR,aR,calR,secR,qR]=await Promise.all([
+    const [sR,aR,secR,qR,holR]=await Promise.all([
       supabase.from("subjects").select("*").eq("teacher_id",profile.id),
       supabase.from("appointments").select("*").eq("teacher_id",profile.id),
-      supabase.from("school_calendar").select("*").order("year").order("month"),
       supabase.from("sections").select("*").eq("adviser_id",profile.id).single(),
       supabase.from("tve_qualifications").select("*").order("name"),
+      supabase.from("school_holidays").select("*").order("date"),
     ]);
     if (sR.data) setSubjects(sR.data);
     if (aR.data) setAppointments(aR.data);
-    if (calR.data) setCalendar(calR.data);
     if (qR.data) setQualifications(qR.data.map(q=>q.name));
+    if (holR.data) setHolidays(holR.data);
     if (secR.data) {
       setMySection(secR.data);
       const {data:stuData}=await supabase.from("profiles").select("*")
         .eq("role","student").eq("section_id",secR.data.id).order("gender").order("name");
       if (stuData) setClassStudents(stuData);
-      const stuIds=stuData?.map(s=>s.id)||[];
-      if (stuIds.length>0) {
-        const {data:attData}=await supabase.from("attendance").select("*").in("student_id",stuIds);
-        if (attData) setAttendance(attData);
-      }
     }
     const {data:allSec}=await supabase.from("sections").select("*");
     if (allSec) setSections(allSec);
@@ -1497,29 +1580,72 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     if (data) setDbGrades(data);
   };
 
-  const getAttVal=(studentId,month,year,term)=>{
-    const key=`${studentId}-${month}-${year}-${term}`;
-    if (localAtt[key]!==undefined) return localAtt[key];
-    return attendance.find(a=>a.student_id===studentId&&a.month===month&&
-      a.year===year&&a.term===term)?.days_present||"";
+  // Load this section's daily attendance rows whenever the selected month changes.
+  useEffect(()=>{
+    if (!selAttMonth||!classStudents.length){setDailyAtt([]);return;}
+    const days=schoolDaysInMonth(selAttMonth,holidays);
+    if (!days.length){setDailyAtt([]);return;}
+    const stuIds=classStudents.map(s=>s.id);
+    (async()=>{
+      const {data}=await supabase.from("daily_attendance").select("*")
+        .in("student_id",stuIds).gte("date",days[0].date).lte("date",days[days.length-1].date);
+      setDailyAtt(data||[]);
+      setLocalDaily({});
+    })();
+  },[selAttMonth,classStudents,holidays]);
+
+  const getDailyStatus=(studentId,date)=>{
+    const key=`${studentId}|${date}`;
+    if (localDaily[key]!==undefined) return localDaily[key];
+    const row=dailyAtt.find(a=>a.student_id===studentId&&a.date===date);
+    return row?row.status:"present"; // unmarked days default to present — click to flag an absence
   };
 
-  const saveAttendance=async()=>{
+  const toggleDaily=(studentId,date)=>{
+    const current=getDailyStatus(studentId,date);
+    const next=current==="present"?"absent":"present";
+    setLocalDaily(p=>({...p,[`${studentId}|${date}`]:next}));
+  };
+
+  const markAllPresent=date=>{
+    setLocalDaily(p=>{
+      const next={...p};
+      classStudents.forEach(s=>{next[`${s.id}|${date}`]="present";});
+      return next;
+    });
+  };
+
+  const saveDailyAttendance=async()=>{
     if (!selAttMonth){notify("⚠️ Select a month first.");return;}
-    const {month,year,term}=selAttMonth;
-    const cal=calendar.find(c=>c.month===month&&c.year===year&&c.term===term);
-    const schoolDays=cal?.school_days||0;
-    const upserts=classStudents
-      .filter(s=>localAtt[`${s.id}-${month}-${year}-${term}`]!==undefined)
-      .map(s=>{
-        const dp=parseInt(localAtt[`${s.id}-${month}-${year}-${term}`])||0;
-        return {student_id:s.id,month,year,term,days_present:Math.min(dp,schoolDays),encoded_by:profile.id};
+    const days=schoolDaysInMonth(selAttMonth,holidays);
+    if (!days.length){notify("⚠️ No school days in this range (check holidays).");return;}
+    setSavingAtt(true);
+    // Write the FULL grid (every student × every school day this month) so the
+    // daily record always matches exactly what's shown on screen.
+    const rows=[];
+    classStudents.forEach(s=>{
+      days.forEach(d=>{
+        rows.push({student_id:s.id,date:d.date,status:getDailyStatus(s.id,d.date),encoded_by:profile.id});
       });
-    if (!upserts.length){notify("⚠️ No changes to save.");return;}
-    const {error}=await supabase.from("attendance")
-      .upsert(upserts,{onConflict:"student_id,month,year,term"});
-    if (error){notify("❌ "+error.message);return;}
-    setLocalAtt({}); notify("✅ Attendance saved!"); fetchData();
+    });
+    const {error}=await supabase.from("daily_attendance")
+      .upsert(rows,{onConflict:"student_id,date"});
+    if (error){notify("❌ "+error.message);setSavingAtt(false);return;}
+
+    // Keep the legacy monthly summary (used elsewhere in the app) and the
+    // school_calendar day count in sync with the real daily grid.
+    const {month,year,term}=selAttMonth;
+    const monthlyRows=classStudents.map(s=>{
+      const presentCount=days.filter(d=>getDailyStatus(s.id,d.date)==="present").length;
+      return {student_id:s.id,month,year,term,days_present:presentCount,encoded_by:profile.id};
+    });
+    await supabase.from("attendance").upsert(monthlyRows,{onConflict:"student_id,month,year,term"});
+    await supabase.from("school_calendar")
+      .upsert({month,year,term,school_days:days.length},{onConflict:"month,year,term"});
+
+    setSavingAtt(false);
+    notify("✅ Daily attendance saved!");
+    fetchData();
   };
 
   const updateApptStatus=async(id,status)=>{
@@ -1666,9 +1792,41 @@ const TeacherDashboard = ({ profile, onLogout }) => {
     }
   };
 
+  const [sf2Month,setSf2Month]=useState(null);
+  const generateSF2=async()=>{
+    if (!mySection||!sf2Month) {notify("⚠️ Select a month first.");return;}
+    notify("⏳ Generating SF2...");
+    const {data:sessionData}=await supabase.auth.getSession();
+    const token=sessionData?.session?.access_token;
+    try {
+      const res=await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-sf2`,
+        {method:"POST",
+         headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+         body:JSON.stringify({
+           section_id:mySection.id, month:sf2Month.month, year:sf2Month.year, term:sf2Month.term,
+         })}
+      );
+      if (!res.ok) {
+        const err=await res.json().catch(()=>({error:"Failed to generate SF2"}));
+        notify("❌ "+(err.error||"Failed to generate SF2"));
+        return;
+      }
+      const blob=await res.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=`SF2_${mySection.name.replace(/\s+/g,"_")}_${sf2Month.label.replace(/\s+/g,"_")}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify("✅ SF2 downloaded!");
+    } catch (e) {
+      notify("❌ "+String(e.message||e));
+    }
+  };
+
   const tabs=[["✏️","Encode","encode"],["📅","Appts","appointments"]];
   if (mySection) tabs.splice(1,0,["🏫","My Class","myclass"],["📆","Attendance","attendance"],
-    ["🏆","Honors","honors"],["📄","SF9","reports"]);
+    ["🏆","Honors","honors"],["📄","Forms","reports"]);
   if (profile.is_curriculum_head) tabs.push(["🎓","Students","chstudents"]);
 
   if (loading) return <Spinner/>;
@@ -1904,7 +2062,7 @@ const TeacherDashboard = ({ profile, onLogout }) => {
 
         {tab==="attendance"&&mySection&&(
           <div>
-            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📆 Encode Attendance</div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📆 Daily Attendance</div>
             <Card style={{marginBottom:12}}>
               <label style={{fontSize:12,color:T.textMuted,display:"block",marginBottom:4}}>Select Month</label>
               <select value={selAttMonth?`${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`:""}
@@ -1915,48 +2073,90 @@ const TeacherDashboard = ({ profile, onLogout }) => {
                 }}>
                 <option value="">-- Select Month --</option>
                 {TERM_MONTHS.map((m,i)=>{
-                  const cal=calendar.find(c=>c.month===m.month&&c.year===m.year&&c.term===m.term);
+                  const days=schoolDaysInMonth(m,holidays);
                   return (
                     <option key={i} value={`${m.month}-${m.year}-${m.term}`}>
-                      {m.label} (Term {m.term}) — {cal?.school_days||0} school days
+                      {m.label} (Term {m.term}) — {days.length} school days
                     </option>
                   );
                 })}
               </select>
             </Card>
             {selAttMonth&&(()=>{
-              const cal=calendar.find(c=>c.month===selAttMonth.month&&c.year===selAttMonth.year&&c.term===selAttMonth.term);
-              const schoolDays=cal?.school_days||0;
+              const days=schoolDaysInMonth(selAttMonth,holidays);
+              const DOW=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
               return (
                 <Card>
-                  <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:4}}>
-                    {selAttMonth.label} — Term {selAttMonth.term}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <div style={{fontSize:13,fontWeight:700,color:T.green2}}>
+                      {selAttMonth.label} — Term {selAttMonth.term}
+                    </div>
+                    <div style={{fontSize:11,color:T.textMuted}}>{days.length} school days</div>
                   </div>
-                  <div style={{fontSize:12,color:T.textMuted,marginBottom:10}}>
-                    School Days: <strong>{schoolDays}</strong>
-                    {schoolDays===0&&<span style={{color:T.red}}> (Admin has not set school days yet)</span>}
+                  <div style={{fontSize:11,color:T.textMuted,marginBottom:10}}>
+                    Every learner defaults to <strong style={{color:T.green3}}>Present</strong> — tap a box to flag an absence.
+                    Weekends and holidays are already excluded.
                   </div>
-                  {classStudents.length===0
-                    ?<div style={{textAlign:"center",color:T.gray,padding:20}}>No students.</div>
-                    :classStudents.map(s=>(
-                      <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,
-                        padding:"8px 0",borderBottom:"1px solid #e0f0e0"}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:13,fontWeight:600,color:T.text}}>{s.name}</div>
-                          <div style={{fontSize:11,color:T.textMuted}}>{s.gender}</div>
-                        </div>
-                        <div style={{display:"flex",alignItems:"center",gap:4}}>
-                          <input type="number" min="0" max={schoolDays} style={{width:60,textAlign:"center"}}
-                            value={getAttVal(s.id,selAttMonth.month,selAttMonth.year,selAttMonth.term)}
-                            onChange={e=>setLocalAtt(p=>({...p,
-                              [`${s.id}-${selAttMonth.month}-${selAttMonth.year}-${selAttMonth.term}`]:e.target.value}))}
-                            placeholder="Days"/>
-                          <span style={{fontSize:10,color:T.textMuted}}>/{schoolDays}</span>
-                        </div>
+                  {days.length===0
+                    ?<div style={{textAlign:"center",color:T.red,padding:20}}>
+                        No school days in this range. Check the Non-School Days list with your admin.
                       </div>
-                    ))
+                    :classStudents.length===0
+                    ?<div style={{textAlign:"center",color:T.gray,padding:20}}>No students.</div>
+                    :(
+                      <div style={{overflowX:"auto",marginBottom:12}}>
+                        <table style={{borderCollapse:"collapse",fontSize:11,minWidth:"100%"}}>
+                          <thead>
+                            <tr>
+                              <th style={{position:"sticky",left:0,background:T.bgCard,zIndex:1,
+                                textAlign:"left",padding:"4px 8px",borderBottom:"2px solid "+T.green3,
+                                minWidth:130}}>Learner</th>
+                              {days.map(d=>(
+                                <th key={d.date} onClick={()=>markAllPresent(d.date)}
+                                  title="Click to mark everyone present this day"
+                                  style={{padding:"2px 3px",textAlign:"center",cursor:"pointer",
+                                  borderBottom:"2px solid "+T.green3,minWidth:26,color:T.textMuted,fontWeight:600}}>
+                                  <div>{DOW[d.dow]}</div><div>{d.day}</div>
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {classStudents.map(s=>(
+                              <tr key={s.id}>
+                                <td style={{position:"sticky",left:0,background:T.bgCard,zIndex:1,
+                                  padding:"4px 8px",borderBottom:"1px solid #e0f0e0",fontWeight:600,color:T.text}}>
+                                  {s.name}
+                                </td>
+                                {days.map(d=>{
+                                  const status=getDailyStatus(s.id,d.date);
+                                  const present=status==="present";
+                                  return (
+                                    <td key={d.date} style={{padding:2,textAlign:"center",
+                                      borderBottom:"1px solid #e0f0e0"}}>
+                                      <div onClick={()=>toggleDaily(s.id,d.date)}
+                                        style={{width:20,height:20,borderRadius:4,margin:"0 auto",
+                                          cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                                          fontWeight:800,fontSize:11,
+                                          background:present?"#e8f5e9":"#ffebee",
+                                          color:present?T.green3:T.red,
+                                          border:`1px solid ${present?"#c8e6c9":"#f0c0c0"}`}}>
+                                        {present?"✓":"✗"}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )
                   }
-                  <Btn onClick={saveAttendance} style={{width:"100%",marginTop:12}}>💾 Save Attendance</Btn>
+                  <Btn onClick={saveDailyAttendance} disabled={savingAtt||days.length===0}
+                    style={{width:"100%"}}>
+                    {savingAtt?"⏳ Saving...":"💾 Save Daily Attendance"}
+                  </Btn>
                 </Card>
               );
             })()}
@@ -2112,10 +2312,34 @@ const TeacherDashboard = ({ profile, onLogout }) => {
         {tab==="reports"&&mySection&&(
           <div>
             <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:4}}>
-              📄 SF9 Report Cards
+              📄 DepEd Forms
             </div>
             <div style={{fontSize:12,color:T.textMuted,marginBottom:12}}>
               {mySection.name} · Grade {mySection.grade_level} · {classStudents.length} students
+            </div>
+
+            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+              School Form 2 — Daily Attendance Report
+            </div>
+            <Card style={{marginBottom:16}}>
+              <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Month</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <select style={{flex:"1 1 200px"}}
+                  value={sf2Month?`${sf2Month.month}-${sf2Month.year}-${sf2Month.term}`:""}
+                  onChange={e=>{
+                    if (!e.target.value){setSf2Month(null);return;}
+                    const [m,y,t]=e.target.value.split("-");
+                    setSf2Month(TERM_MONTHS.find(x=>x.month===parseInt(m)&&x.year===parseInt(y)&&x.term===parseInt(t))||null);
+                  }}>
+                  <option value="">-- Select Month --</option>
+                  {TERM_MONTHS.map((m,i)=><option key={i} value={`${m.month}-${m.year}-${m.term}`}>{m.label}</option>)}
+                </select>
+                <Btn onClick={generateSF2} style={{flexShrink:0}}>📄 Generate SF2 PDF</Btn>
+              </div>
+            </Card>
+
+            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+              School Form 9 — Report Cards
             </div>
             <Card style={{marginBottom:12}}>
               <div style={{fontSize:11,color:T.textMuted,marginBottom:4}}>Period</div>
@@ -2164,6 +2388,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const [appointments,setAppointments]=useState([]);
   const [sections,setSections]=useState([]);
   const [calendar,setCalendar]=useState([]);
+  const [holidays,setHolidays]=useState([]);
   const [toast,setToast]=useState("");
   const [loading,setLoading]=useState(true);
   const [editGrade,setEditGrade]=useState(null);
@@ -2188,7 +2413,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
 
   const fetchAll=useCallback(async()=>{
     setLoading(true);
-    const [sR,tR,subR,gR,aR,secR,calR,settR,qR]=await Promise.all([
+    const [sR,tR,subR,gR,aR,secR,calR,settR,qR,holR]=await Promise.all([
       supabase.from("profiles").select("*").eq("role","student").order("grade_level").order("name"),
       supabase.from("profiles").select("*").eq("role","teacher").order("name"),
       supabase.from("subjects").select("*").order("grade_level"),
@@ -2198,6 +2423,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
       supabase.from("school_calendar").select("*").order("year").order("month"),
       supabase.from("app_settings").select("*"),
       supabase.from("tve_qualifications").select("*").order("name"),
+      supabase.from("school_holidays").select("*").order("date"),
     ]);
     if (sR.data) setStudents(sR.data);
     if (tR.data) setTeachers(tR.data);
@@ -2207,6 +2433,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
     if (secR.data) setSections(secR.data);
     if (calR.data) setCalendar(calR.data);
     if (qR.data) setQualifications(qR.data);
+    if (holR.data) setHolidays(holR.data);
     if (settR.data) {
       const lockSetting=settR.data.find(s=>s.key==="student_access_locked");
       if (lockSetting) setIsLocked(lockSetting.value==="true");
@@ -2215,6 +2442,16 @@ const AdminDashboard = ({ profile, onLogout }) => {
   },[]);
 
   useEffect(()=>{fetchAll();},[fetchAll]);
+
+  const addHoliday=async(date,label)=>{
+    const {error}=await supabase.from("school_holidays").insert({date,label});
+    if (error){notify("❌ "+error.message);return;}
+    notify("✅ Non-school day added!"); fetchAll();
+  };
+  const deleteHoliday=async id=>{
+    await supabase.from("school_holidays").delete().eq("id",id);
+    notify("✅ Removed."); fetchAll();
+  };
 
   // ── SETTINGS ──
   const toggleLock=async()=>{
@@ -2376,6 +2613,57 @@ const AdminDashboard = ({ profile, onLogout }) => {
   const reassignSubjectSection=async(subId,sectionId)=>{
     await supabase.from("subjects").update({section_id:sectionId||null}).eq("id",subId);
     notify("✅ Section scope updated!"); fetchAll();
+  };
+
+  // ── DepEd FORMS (SF2 / SF4) ──
+  const [sf2Section,setSf2Section]=useState("");
+  const [sf2Month,setSf2Month]=useState(null);
+  const [sf4Level,setSf4Level]=useState("JHS");
+  const [sf4Month,setSf4Month]=useState(null);
+  const [genBusy,setGenBusy]=useState(false);
+
+  const downloadPdf=async(fnName,body,filename)=>{
+    setGenBusy(true);
+    notify("⏳ Generating "+filename+"...");
+    const {data:sessionData}=await supabase.auth.getSession();
+    const token=sessionData?.session?.access_token;
+    try {
+      const res=await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${fnName}`,
+        {method:"POST",
+         headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+         body:JSON.stringify(body)});
+      if (!res.ok) {
+        const err=await res.json().catch(()=>({error:"Failed to generate "+filename}));
+        notify("❌ "+(err.error||"Failed to generate "+filename));
+        return;
+      }
+      const blob=await res.blob();
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      notify("✅ Downloaded!");
+    } catch (e) {
+      notify("❌ "+String(e.message||e));
+    } finally {
+      setGenBusy(false);
+    }
+  };
+
+  const generateSF2Admin=()=>{
+    if (!sf2Section||!sf2Month){notify("⚠️ Select a section and month first.");return;}
+    const sec=sections.find(s=>s.id===sf2Section);
+    downloadPdf("generate-sf2",
+      {section_id:sf2Section,month:sf2Month.month,year:sf2Month.year,term:sf2Month.term},
+      `SF2_${(sec?.name||"section").replace(/\s+/g,"_")}_${sf2Month.label.replace(/\s+/g,"_")}.pdf`);
+  };
+
+  const generateSF4=()=>{
+    if (!sf4Month){notify("⚠️ Select a month first.");return;}
+    downloadPdf("generate-sf4",
+      {level:sf4Level,month:sf4Month.month,year:sf4Month.year,term:sf4Month.term},
+      `SF4_${sf4Level}_${sf4Month.label.replace(/\s+/g,"_")}.pdf`);
   };
 
   // ── TVE QUALIFICATIONS ──
@@ -3022,7 +3310,68 @@ const AdminDashboard = ({ profile, onLogout }) => {
         )}
 
         {tab==="calendar"&&(
-          <CalendarPanel calendar={calendar} onSave={saveSchoolDays}/>
+          <CalendarPanel calendar={calendar} onSave={saveSchoolDays}
+            holidays={holidays} onAddHoliday={addHoliday} onDeleteHoliday={deleteHoliday}/>
+        )}
+
+        {tab==="forms"&&(
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:T.green1,marginBottom:10}}>📄 DepEd Forms</div>
+
+            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+              School Form 2 — Daily Attendance Report (per section)
+            </div>
+            <Card style={{marginBottom:16}}>
+              <div style={{display:"grid",gap:8}}>
+                <select value={sf2Section} onChange={e=>setSf2Section(e.target.value)}>
+                  <option value="">-- Select Section --</option>
+                  {sections.map(s=><option key={s.id} value={s.id}>Gr.{s.grade_level} — {s.name}</option>)}
+                </select>
+                <select value={sf2Month?`${sf2Month.month}-${sf2Month.year}-${sf2Month.term}`:""}
+                  onChange={e=>{
+                    if (!e.target.value){setSf2Month(null);return;}
+                    const [m,y,t]=e.target.value.split("-");
+                    setSf2Month(TERM_MONTHS.find(x=>x.month===parseInt(m)&&x.year===parseInt(y)&&x.term===parseInt(t))||null);
+                  }}>
+                  <option value="">-- Select Month --</option>
+                  {TERM_MONTHS.map((m,i)=><option key={i} value={`${m.month}-${m.year}-${m.term}`}>{m.label}</option>)}
+                </select>
+                <Btn onClick={generateSF2Admin} disabled={genBusy}>📄 Generate SF2 PDF</Btn>
+              </div>
+            </Card>
+
+            <div style={{fontSize:13,fontWeight:700,color:T.green2,marginBottom:6}}>
+              School Form 4 — Movement & Attendance Report
+            </div>
+            <Card style={{marginBottom:12}}>
+              <div style={{display:"grid",gap:8}}>
+                <div style={{display:"flex",gap:8}}>
+                  {["JHS","SHS"].map(lv=>(
+                    <button key={lv} onClick={()=>setSf4Level(lv)}
+                      style={{flex:1,padding:"10px 0",borderRadius:8,fontSize:13,fontWeight:700,
+                        background:sf4Level===lv?T.green3:"#e8f5e2",color:sf4Level===lv?T.white:T.textMuted}}>
+                      {lv==="JHS"?"Junior High (7–10)":"Senior High (11–12)"}
+                    </button>
+                  ))}
+                </div>
+                <select value={sf4Month?`${sf4Month.month}-${sf4Month.year}-${sf4Month.term}`:""}
+                  onChange={e=>{
+                    if (!e.target.value){setSf4Month(null);return;}
+                    const [m,y,t]=e.target.value.split("-");
+                    setSf4Month(TERM_MONTHS.find(x=>x.month===parseInt(m)&&x.year===parseInt(y)&&x.term===parseInt(t))||null);
+                  }}>
+                  <option value="">-- Select Month --</option>
+                  {TERM_MONTHS.map((m,i)=><option key={i} value={`${m.month}-${m.year}-${m.term}`}>{m.label}</option>)}
+                </select>
+                <Btn onClick={generateSF4} disabled={genBusy}>📄 Generate SF4 PDF ({sf4Level})</Btn>
+              </div>
+            </Card>
+            <div style={{fontSize:11,color:T.textMuted,padding:"0 4px"}}>
+              SF2 uses the Daily Attendance grid each adviser encodes for their section.
+              SF4 movement figures (transferred in/out, dropped out) come from each learner's
+              Enrollment Status — edit a learner in the Students tab to update it.
+            </div>
+          </div>
         )}
 
         {tab==="appointments"&&(
@@ -3063,7 +3412,7 @@ const AdminDashboard = ({ profile, onLogout }) => {
           ["🎓","Students","students"],["👨‍🏫","Teachers","teachers"],
           ["🏫","Sections","sections"],["📚","Subjects","subjects"],
           ["📝","Grades","grades"],["📅","Calendar","calendar"],
-          ["🗓️","Appts","appointments"],
+          ["📄","Forms","forms"],["🗓️","Appts","appointments"],
         ]}
         active={tab} setActive={setTab}/>
     </div>
